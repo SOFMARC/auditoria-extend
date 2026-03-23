@@ -1,0 +1,144 @@
+@using AuditoriaExtend.Application.Common
+@using AuditoriaExtend.Application.DTOs
+@model PaginatedList<LoteDto>
+@{
+    ViewData["Title"] = "Histórico de Lotes";
+    var filterStatus = ViewBag.FilterStatus as string ?? "";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="fas fa-history me-2 text-primary"></i>Histórico de Lotes</h2>
+    </div>
+    <div class="col-auto">
+        <a asp-action="Upload" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Novo Upload
+        </a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Status</label>
+                <select name="filterStatus" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    <option value="0" selected="@(filterStatus == "0" ? "selected" : null)">Pendente</option>
+                    <option value="1" selected="@(filterStatus == "1" ? "selected" : null)">Processando</option>
+                    <option value="2" selected="@(filterStatus == "2" ? "selected" : null)">Concluído</option>
+                    <option value="3" selected="@(filterStatus == "3" ? "selected" : null)">Erro</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-filter me-1"></i>Filtrar
+                </button>
+                <a asp-action="Historico" class="btn btn-sm btn-outline-secondary ms-1">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (Model.Items.Any())
+        {
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Arquivo</th>
+                        <th>Tamanho</th>
+                        <th>Status</th>
+                        <th>Progresso</th>
+                        <th>Divergências</th>
+                        <th>Data</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lote in Model.Items)
+                    {
+                        <tr>
+                            <td class="text-muted">#@lote.Id</td>
+                            <td>
+                                <i class="fas fa-file-archive me-1 text-muted"></i>
+                                <span title="@lote.NomeArquivo">
+                                    @(lote.NomeArquivo.Length > 40 ? lote.NomeArquivo[..40] + "..." : lote.NomeArquivo)
+                                </span>
+                            </td>
+                            <td class="text-muted small">@FormatBytes(lote.TamanhoArquivo)</td>
+                            <td>
+                                @{
+                                    var (cls, ic) = lote.Status switch
+                                    {
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Concluido => ("success", "check-circle"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Processando => ("warning", "spinner fa-spin"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Erro => ("danger", "times-circle"),
+                                        _ => ("secondary", "clock")
+                                    };
+                                }
+                                <span class="badge bg-@cls"><i class="fas fa-@ic me-1"></i>@lote.Status</span>
+                            </td>
+                            <td style="min-width:120px">
+                                <div class="progress" style="height:6px">
+                                    <div class="progress-bar bg-primary" style="width:@lote.PercentualProcessado%"></div>
+                                </div>
+                                <small class="text-muted">@lote.QuantidadeProcessados/@lote.QuantidadeDocumentos</small>
+                            </td>
+                            <td>
+                                @if (lote.QuantidadeDivergencias > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">@lote.QuantidadeDivergencias</span>
+                                }
+                                else { <span class="text-muted">0</span> }
+                            </td>
+                            <td><small class="text-muted">@lote.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small></td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a asp-action="Detalhes" asp-route-id="@lote.Id" class="btn btn-outline-primary" title="Detalhes">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    @if (lote.Status == AuditoriaExtend.Domain.Enums.StatusLote.Pendente)
+                                    {
+                                        <form asp-action="Processar" asp-route-id="@lote.Id" method="post" class="d-inline">
+                                            <button type="submit" class="btn btn-outline-success" title="Processar">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                        </form>
+                                    }
+                                    <form asp-action="Deletar" asp-route-id="@lote.Id" method="post" class="d-inline"
+                                          onsubmit="return confirm('Remover lote #@lote.Id?')">
+                                        <button type="submit" class="btn btn-outline-danger" title="Remover">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="px-3 pb-3">
+                @await Html.PartialAsync("_Pagination", Model)
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-inbox fa-3x mb-3"></i>
+                <p>Nenhum lote encontrado.</p>
+            </div>
+        }
+    </div>
+</div>
+
+@functions {
+    string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1048576) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1048576.0:F1} MB";
+    }
+}

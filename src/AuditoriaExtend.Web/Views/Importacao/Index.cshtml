@@ -1,0 +1,120 @@
+@{
+    ViewData["Title"] = "Importação de Lotes";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="fas fa-upload me-2 text-primary"></i>Importação de Lotes</h2>
+        <p class="text-muted">Gerencie o upload e processamento de arquivos ZIP com guias e pedidos médicos.</p>
+    </div>
+    <div class="col-auto">
+        <a asp-action="Upload" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Novo Upload
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body text-center">
+                <i class="fas fa-layer-group fa-2x text-primary mb-2"></i>
+                <h4 class="mb-0">@ViewBag.TotalLotes</h4>
+                <small class="text-muted">Total de Lotes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <i class="fas fa-file-archive fa-2x text-success mb-2"></i>
+                <h4 class="mb-0">@ViewBag.MaxFileSize</h4>
+                <small class="text-muted">Tamanho Máximo</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-info">
+            <div class="card-body text-center">
+                <i class="fas fa-file-pdf fa-2x text-info mb-2"></i>
+                <h4 class="mb-0">PDF, TIFF, JPG</h4>
+                <small class="text-muted">Formatos Aceitos</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-history me-2"></i>Lotes Recentes</h5>
+        <a asp-action="Historico" class="btn btn-sm btn-outline-secondary">Ver Todos</a>
+    </div>
+    <div class="card-body p-0">
+        @if (ViewBag.LotesRecentes != null && ((IList<AuditoriaExtend.Application.DTOs.LoteDto>)ViewBag.LotesRecentes).Count > 0)
+        {
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Arquivo</th>
+                        <th>Status</th>
+                        <th>Documentos</th>
+                        <th>Divergências</th>
+                        <th>Data</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var lote in (IList<AuditoriaExtend.Application.DTOs.LoteDto>)ViewBag.LotesRecentes)
+                    {
+                        <tr>
+                            <td>@lote.Id</td>
+                            <td><i class="fas fa-file-archive me-1 text-muted"></i>@lote.NomeArquivo</td>
+                            <td>
+                                @{
+                                    var (badgeClass, icon) = lote.Status switch
+                                    {
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Concluido => ("success", "check-circle"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Processando => ("warning", "spinner fa-spin"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Erro => ("danger", "times-circle"),
+                                        _ => ("secondary", "clock")
+                                    };
+                                }
+                                <span class="badge bg-@badgeClass">
+                                    <i class="fas fa-@icon me-1"></i>@lote.Status
+                                </span>
+                            </td>
+                            <td>@lote.QuantidadeProcessados / @lote.QuantidadeDocumentos</td>
+                            <td>
+                                @if (lote.QuantidadeDivergencias > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">@lote.QuantidadeDivergencias</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td><small class="text-muted">@lote.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small></td>
+                            <td>
+                                <a asp-action="Detalhes" asp-route-id="@lote.Id" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-inbox fa-3x mb-3"></i>
+                <p>Nenhum lote importado ainda.</p>
+                <a asp-action="Upload" class="btn btn-primary">
+                    <i class="fas fa-upload me-1"></i>Fazer Primeiro Upload
+                </a>
+            </div>
+        }
+    </div>
+</div>

@@ -1,0 +1,119 @@
+@using AuditoriaExtend.Application.DTOs
+@model LoteDto
+@{
+    ViewData["Title"] = $"Lote #{Model.Id}";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a asp-action="Index">Importação</a></li>
+                <li class="breadcrumb-item"><a asp-action="Historico">Histórico</a></li>
+                <li class="breadcrumb-item active">Lote #@Model.Id</li>
+            </ol>
+        </nav>
+        <h2><i class="fas fa-file-archive me-2 text-primary"></i>@Model.NomeArquivo</h2>
+    </div>
+    <div class="col-auto d-flex gap-2">
+        @if (Model.Status == AuditoriaExtend.Domain.Enums.StatusLote.Pendente)
+        {
+            <form asp-action="Processar" asp-route-id="@Model.Id" method="post">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-play me-1"></i>Processar Lote
+                </button>
+            </form>
+        }
+        <a asp-action="Historico" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Voltar
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                @{
+                    var (cls, ic) = Model.Status switch
+                    {
+                        AuditoriaExtend.Domain.Enums.StatusLote.Concluido => ("success", "check-circle"),
+                        AuditoriaExtend.Domain.Enums.StatusLote.Processando => ("warning", "spinner fa-spin"),
+                        AuditoriaExtend.Domain.Enums.StatusLote.Erro => ("danger", "times-circle"),
+                        _ => ("secondary", "clock")
+                    };
+                }
+                <i class="fas fa-@ic fa-2x text-@cls mb-2"></i>
+                <h5 class="mb-0">@Model.Status</h5>
+                <small class="text-muted">Status</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="fas fa-file fa-2x text-primary mb-2"></i>
+                <h5 class="mb-0">@Model.QuantidadeProcessados / @Model.QuantidadeDocumentos</h5>
+                <small class="text-muted">Documentos Processados</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
+                <h5 class="mb-0">@Model.QuantidadeDivergencias</h5>
+                <small class="text-muted">Divergências</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="fas fa-percentage fa-2x text-info mb-2"></i>
+                <h5 class="mb-0">@Model.PercentualProcessado%</h5>
+                <small class="text-muted">Progresso</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Informações do Lote</h5></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr><th class="text-muted" style="width:40%">ID</th><td>#@Model.Id</td></tr>
+                    <tr><th class="text-muted">Arquivo</th><td>@Model.NomeArquivo</td></tr>
+                    <tr><th class="text-muted">Tamanho</th><td>@((Model.TamanhoArquivo / 1024.0 / 1024.0).ToString("F2")) MB</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr><th class="text-muted" style="width:40%">Criado em</th><td>@Model.DataCriacao.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                    <tr><th class="text-muted">Concluído em</th><td>@(Model.DataFimProcessamento?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td></tr>
+                </table>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Model.MensagemErro))
+        {
+            <div class="alert alert-danger mt-2 mb-0">
+                <i class="fas fa-times-circle me-2"></i><strong>Erro:</strong> @Model.MensagemErro
+            </div>
+        }
+    </div>
+</div>
+
+@if (Model.QuantidadeDivergencias > 0)
+{
+    <div class="card border-warning">
+        <div class="card-body text-center py-4">
+            <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
+            <p class="mb-2">Este lote possui <strong>@Model.QuantidadeDivergencias divergências</strong> aguardando revisão.</p>
+            <a asp-controller="RevisaoHumana" asp-action="Fila" class="btn btn-warning">
+                <i class="fas fa-tasks me-1"></i>Ir para Revisão Humana
+            </a>
+        </div>
+    </div>
+}

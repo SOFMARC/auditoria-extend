@@ -1,0 +1,105 @@
+@using AuditoriaExtend.Application.Common
+@using AuditoriaExtend.Application.DTOs
+@model PaginatedList<DivergenciaAuditoriaDto>
+@{
+    ViewData["Title"] = "Fila de Revisão";
+    var filterSev = ViewBag.FilterSeveridade as string ?? "";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="fas fa-tasks me-2 text-warning"></i>Fila de Revisão Humana</h2>
+        <p class="text-muted">@Model.TotalCount divergências aguardando revisão.</p>
+    </div>
+    <div class="col-auto d-flex gap-2">
+        <a asp-action="Historico" class="btn btn-outline-secondary">
+            <i class="fas fa-history me-1"></i>Histórico
+        </a>
+        <a asp-action="Relatorio" class="btn btn-outline-success">
+            <i class="fas fa-download me-1"></i>Exportar CSV
+        </a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Severidade</label>
+                <select name="filterSeveridade" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    <option value="4" selected="@(filterSev == "4" ? "selected" : null)">Crítica</option>
+                    <option value="3" selected="@(filterSev == "3" ? "selected" : null)">Alta</option>
+                    <option value="2" selected="@(filterSev == "2" ? "selected" : null)">Média</option>
+                    <option value="1" selected="@(filterSev == "1" ? "selected" : null)">Baixa</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-filter me-1"></i>Filtrar
+                </button>
+                <a asp-action="Fila" class="btn btn-sm btn-outline-secondary ms-1">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (Model.Items.Any())
+        {
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Documento</th>
+                        <th>Tipo</th>
+                        <th>Severidade</th>
+                        <th>Descrição</th>
+                        <th>Data</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var div in Model.Items)
+                    {
+                        var (sevClass, sevIcon) = div.Severidade switch
+                        {
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Critica => ("danger", "skull-crossbones"),
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Alta => ("warning", "exclamation-circle"),
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Media => ("info", "info-circle"),
+                            _ => ("secondary", "minus-circle")
+                        };
+                        <tr>
+                            <td class="text-muted">#@div.Id</td>
+                            <td><small>@div.NomeArquivoDocumento</small></td>
+                            <td><small class="text-muted">@div.Tipo</small></td>
+                            <td>
+                                <span class="badge bg-@sevClass">
+                                    <i class="fas fa-@sevIcon me-1"></i>@div.SeveridadeLabel
+                                </span>
+                            </td>
+                            <td><small>@(div.Descricao.Length > 60 ? div.Descricao[..60] + "..." : div.Descricao)</small></td>
+                            <td><small class="text-muted">@div.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small></td>
+                            <td>
+                                <a asp-action="Revisar" asp-route-id="@div.Id" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-gavel me-1"></i>Revisar
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="px-3 pb-3">
+                @await Html.PartialAsync("_Pagination", Model)
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <p class="fw-semibold">Nenhuma divergência pendente de revisão!</p>
+            </div>
+        }
+    </div>
+</div>

@@ -1,0 +1,86 @@
+@using AuditoriaExtend.Application.Common
+@model dynamic
+
+@{
+    // Esperado: Model com propriedades PageIndex, TotalPages, HasPreviousPage, HasNextPage, TotalCount, StartIndex, EndIndex
+    int pageIndex = (int)Model.PageIndex;
+    int totalPages = (int)Model.TotalPages;
+    bool hasPrev = (bool)Model.HasPreviousPage;
+    bool hasNext = (bool)Model.HasNextPage;
+    int totalCount = (int)Model.TotalCount;
+    int startIndex = (int)Model.StartIndex;
+    int endIndex = (int)Model.EndIndex;
+    int pageSize = (int)Model.PageSize;
+
+    string controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    string action = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+
+    // Preserva todos os query params exceto page/pageSize
+    var queryParams = Context.Request.Query
+        .Where(q => q.Key != "page" && q.Key != "pageSize")
+        .ToDictionary(q => q.Key, q => q.Value.ToString());
+}
+
+<div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <div class="text-muted small">
+        @if (totalCount == 0)
+        {
+            <span>Nenhum registro encontrado</span>
+        }
+        else
+        {
+            <span>Mostrando <strong>@startIndex</strong> a <strong>@endIndex</strong> de <strong>@totalCount</strong> registros</span>
+        }
+    </div>
+
+    @if (totalPages > 1)
+    {
+        <nav aria-label="Paginação">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(!hasPrev ? "disabled" : "")">
+                    @{
+                        var prevParams = new Dictionary<string, string>(queryParams) { ["page"] = (pageIndex - 1).ToString(), ["pageSize"] = pageSize.ToString() };
+                    }
+                    <a class="page-link" asp-controller="@controller" asp-action="@action" asp-all-route-data="prevParams">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                </li>
+
+                @for (int i = 1; i <= totalPages; i++)
+                {
+                    if (i == 1 || i == totalPages || (i >= pageIndex - 2 && i <= pageIndex + 2))
+                    {
+                        var pageParams = new Dictionary<string, string>(queryParams) { ["page"] = i.ToString(), ["pageSize"] = pageSize.ToString() };
+                        <li class="page-item @(i == pageIndex ? "active" : "")">
+                            <a class="page-link" asp-controller="@controller" asp-action="@action" asp-all-route-data="pageParams">@i</a>
+                        </li>
+                    }
+                    else if (i == pageIndex - 3 || i == pageIndex + 3)
+                    {
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                    }
+                }
+
+                <li class="page-item @(!hasNext ? "disabled" : "")">
+                    @{
+                        var nextParams = new Dictionary<string, string>(queryParams) { ["page"] = (pageIndex + 1).ToString(), ["pageSize"] = pageSize.ToString() };
+                    }
+                    <a class="page-link" asp-controller="@controller" asp-action="@action" asp-all-route-data="nextParams">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    }
+
+    <div class="d-flex align-items-center gap-2">
+        <label class="text-muted small mb-0">Por página:</label>
+        <select class="form-select form-select-sm" style="width:auto"
+                onchange="window.location.href=updateQueryParam(window.location.href,'pageSize',this.value,'page','1')">
+            @foreach (var size in new[] { 5, 10, 25, 50, 100 })
+            {
+                <option value="@size" selected="@(pageSize == size ? "selected" : null)">@size</option>
+            }
+        </select>
+    </div>
+</div>

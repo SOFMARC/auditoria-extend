@@ -1,0 +1,149 @@
+@using AuditoriaExtend.Application.Common
+@using AuditoriaExtend.Application.DTOs
+@model PaginatedList<DivergenciaAuditoriaDto>
+@{
+    ViewData["Title"] = "Divergências";
+    var filterStatus = ViewBag.FilterStatus as string ?? "";
+    var filterSev = ViewBag.FilterSeveridade as string ?? "";
+    var filterTipo = ViewBag.FilterTipo as string ?? "";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Divergências de Auditoria</h2>
+        <p class="text-muted">@Model.TotalCount divergências encontradas.</p>
+    </div>
+    <div class="col-auto d-flex gap-2">
+        <a asp-action="Relatorio" class="btn btn-outline-success">
+            <i class="fas fa-download me-1"></i>Exportar CSV
+        </a>
+        <a asp-controller="RevisaoHumana" asp-action="Fila" class="btn btn-warning">
+            <i class="fas fa-tasks me-1"></i>Revisar Pendentes
+        </a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Status</label>
+                <select name="filterStatus" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    <option value="0" selected="@(filterStatus == "0" ? "selected" : null)">Pendente</option>
+                    <option value="1" selected="@(filterStatus == "1" ? "selected" : null)">Em Revisão</option>
+                    <option value="2" selected="@(filterStatus == "2" ? "selected" : null)">Aceita</option>
+                    <option value="3" selected="@(filterStatus == "3" ? "selected" : null)">Rejeitada</option>
+                    <option value="4" selected="@(filterStatus == "4" ? "selected" : null)">Correção Solicitada</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Severidade</label>
+                <select name="filterSeveridade" class="form-select form-select-sm">
+                    <option value="">Todas</option>
+                    <option value="4" selected="@(filterSev == "4" ? "selected" : null)">Crítica</option>
+                    <option value="3" selected="@(filterSev == "3" ? "selected" : null)">Alta</option>
+                    <option value="2" selected="@(filterSev == "2" ? "selected" : null)">Média</option>
+                    <option value="1" selected="@(filterSev == "1" ? "selected" : null)">Baixa</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Tipo</label>
+                <select name="filterTipo" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    <option value="1" selected="@(filterTipo == "1" ? "selected" : null)">Confiança Baixa</option>
+                    <option value="2" selected="@(filterTipo == "2" ? "selected" : null)">Procedimento Não Encontrado</option>
+                    <option value="3" selected="@(filterTipo == "3" ? "selected" : null)">Duplicidade</option>
+                    <option value="4" selected="@(filterTipo == "4" ? "selected" : null)">Origem Suspeita</option>
+                    <option value="5" selected="@(filterTipo == "5" ? "selected" : null)">Valor Fora do Padrão</option>
+                    <option value="6" selected="@(filterTipo == "6" ? "selected" : null)">Data Inválida</option>
+                    <option value="7" selected="@(filterTipo == "7" ? "selected" : null)">Campo Obrigatório Ausente</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-filter me-1"></i>Filtrar
+                </button>
+                <a asp-action="Divergencias" class="btn btn-sm btn-outline-secondary ms-1">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (Model.Items.Any())
+        {
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Documento</th>
+                        <th>Tipo</th>
+                        <th>Severidade</th>
+                        <th>Status</th>
+                        <th>Descrição</th>
+                        <th>Data</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var div in Model.Items)
+                    {
+                        var (sevCls, sevIc) = div.Severidade switch
+                        {
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Critica => ("danger", "skull-crossbones"),
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Alta => ("warning", "exclamation-circle"),
+                            AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Media => ("info", "info-circle"),
+                            _ => ("secondary", "minus-circle")
+                        };
+                        var (stCls, stIc) = div.Status switch
+                        {
+                            AuditoriaExtend.Domain.Enums.StatusDivergencia.Aceita => ("success", "check"),
+                            AuditoriaExtend.Domain.Enums.StatusDivergencia.Rejeitada => ("danger", "times"),
+                            AuditoriaExtend.Domain.Enums.StatusDivergencia.EmRevisao => ("primary", "spinner fa-spin"),
+                            AuditoriaExtend.Domain.Enums.StatusDivergencia.CorrecaoSolicitada => ("warning", "edit"),
+                            _ => ("secondary", "clock")
+                        };
+                        <tr>
+                            <td class="text-muted">#@div.Id</td>
+                            <td><small>@div.NomeArquivoDocumento</small></td>
+                            <td><small class="text-muted">@div.Tipo</small></td>
+                            <td>
+                                <span class="badge bg-@sevCls">
+                                    <i class="fas fa-@sevIc me-1"></i>@div.SeveridadeLabel
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-@stCls">
+                                    <i class="fas fa-@stIc me-1"></i>@div.StatusLabel
+                                </span>
+                            </td>
+                            <td><small>@(div.Descricao.Length > 55 ? div.Descricao[..55] + "..." : div.Descricao)</small></td>
+                            <td><small class="text-muted">@div.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small></td>
+                            <td>
+                                @if (div.Status == AuditoriaExtend.Domain.Enums.StatusDivergencia.Pendente)
+                                {
+                                    <a asp-controller="RevisaoHumana" asp-action="Revisar" asp-route-id="@div.Id"
+                                       class="btn btn-sm btn-outline-warning">
+                                        <i class="fas fa-gavel"></i>
+                                    </a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="px-3 pb-3">
+                @await Html.PartialAsync("_Pagination", Model)
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <p>Nenhuma divergência encontrada com os filtros aplicados.</p>
+            </div>
+        }
+    </div>
+</div>

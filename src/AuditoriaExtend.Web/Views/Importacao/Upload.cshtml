@@ -1,0 +1,118 @@
+@{
+    ViewData["Title"] = "Upload de Arquivo";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="mb-4">
+            <h2><i class="fas fa-cloud-upload-alt me-2 text-primary"></i>Upload de Arquivo</h2>
+            <p class="text-muted">Envie um arquivo ZIP contendo os documentos médicos para auditoria.</p>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="Upload" method="post" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Arquivo ZIP <span class="text-danger">*</span></label>
+                        <div id="dropZone" class="border border-2 border-dashed rounded p-5 text-center"
+                             style="cursor:pointer; border-color:#dee2e6 !important; transition: all .2s">
+                            <i class="fas fa-file-archive fa-3x text-muted mb-3"></i>
+                            <p class="mb-1 fw-semibold">Arraste o arquivo aqui ou clique para selecionar</p>
+                            <p class="text-muted small mb-0">Somente arquivos .ZIP até @ViewBag.MaxFileSize</p>
+                            <input type="file" id="arquivo" name="arquivo" accept=".zip"
+                                   class="d-none" required />
+                        </div>
+                        <div id="fileInfo" class="alert alert-info mt-2 d-none">
+                            <i class="fas fa-file-archive me-2"></i>
+                            <span id="fileName"></span>
+                            <span class="ms-2 text-muted" id="fileSize"></span>
+                        </div>
+                        @if (!ViewData.ModelState.IsValid)
+                        {
+                            <div class="text-danger small mt-1">
+                                @Html.ValidationMessage("arquivo")
+                            </div>
+                        }
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="btnUpload">
+                            <i class="fas fa-upload me-1"></i>Enviar Arquivo
+                        </button>
+                        <a asp-action="Index" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Cancelar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3 border-info">
+            <div class="card-body">
+                <h6 class="text-info"><i class="fas fa-info-circle me-2"></i>Estrutura Esperada do ZIP</h6>
+                <pre class="bg-light rounded p-3 small mb-0">arquivo.zip/
+├── guia_001.pdf
+├── guia_002.pdf
+├── pedido_medico_001.pdf
+└── laudo_001.pdf</pre>
+                <small class="text-muted">Formatos aceitos: PDF, TIFF, TIF, JPG, JPEG, PNG</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('arquivo');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const btnUpload = document.getElementById('btnUpload');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#0d6efd';
+        dropZone.style.backgroundColor = '#f0f7ff';
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = '#dee2e6';
+        dropZone.style.backgroundColor = '';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#dee2e6';
+        dropZone.style.backgroundColor = '';
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            showFileInfo(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) showFileInfo(fileInput.files[0]);
+    });
+
+    function showFileInfo(file) {
+        fileName.textContent = file.name;
+        fileSize.textContent = '(' + formatBytes(file.size) + ')';
+        fileInfo.classList.remove('d-none');
+        dropZone.style.borderColor = '#198754';
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    document.querySelector('form').addEventListener('submit', () => {
+        btnUpload.disabled = true;
+        btnUpload.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando...';
+    });
+</script>
+}

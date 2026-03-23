@@ -1,0 +1,151 @@
+@using AuditoriaExtend.Application.DTOs
+@model DivergenciaAuditoriaDto
+@{
+    ViewData["Title"] = $"Revisar Divergência #{Model.Id}";
+    var (sevClass, sevIcon) = Model.Severidade switch
+    {
+        AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Critica => ("danger", "skull-crossbones"),
+        AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Alta => ("warning", "exclamation-circle"),
+        AuditoriaExtend.Domain.Enums.SeveridadeDivergencia.Media => ("info", "info-circle"),
+        _ => ("secondary", "minus-circle")
+    };
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a asp-action="Fila">Fila de Revisão</a></li>
+                <li class="breadcrumb-item active">Divergência #@Model.Id</li>
+            </ol>
+        </nav>
+        <h2><i class="fas fa-gavel me-2 text-primary"></i>Revisar Divergência #@Model.Id</h2>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Detalhes da Divergência</h5>
+                <span class="badge bg-@sevClass fs-6">
+                    <i class="fas fa-@sevIcon me-1"></i>@Model.SeveridadeLabel
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless">
+                    <tr><th class="text-muted" style="width:35%">Documento</th><td>@Model.NomeArquivoDocumento</td></tr>
+                    <tr><th class="text-muted">Tipo</th><td>@Model.Tipo</td></tr>
+                    <tr><th class="text-muted">Status Atual</th><td><span class="badge bg-secondary">@Model.StatusLabel</span></td></tr>
+                    <tr><th class="text-muted">Descrição</th><td>@Model.Descricao</td></tr>
+                    @if (!string.IsNullOrEmpty(Model.CampoAfetado))
+                    {
+                        <tr><th class="text-muted">Campo Afetado</th><td><code>@Model.CampoAfetado</code></td></tr>
+                    }
+                    @if (!string.IsNullOrEmpty(Model.ValorEncontrado))
+                    {
+                        <tr><th class="text-muted">Valor Encontrado</th><td><span class="text-danger">@Model.ValorEncontrado</span></td></tr>
+                    }
+                    @if (!string.IsNullOrEmpty(Model.ValorEsperado))
+                    {
+                        <tr><th class="text-muted">Valor Esperado</th><td><span class="text-success">@Model.ValorEsperado</span></td></tr>
+                    }
+                    @if (Model.ValorConfianca.HasValue)
+                    {
+                        <tr><th class="text-muted">Confiança OCR</th>
+                            <td>
+                                <div class="progress" style="height:8px;width:120px;display:inline-block;vertical-align:middle">
+                                    <div class="progress-bar @(Model.ValorConfianca < 0.5 ? "bg-danger" : "bg-warning")"
+                                         style="width:@(Model.ValorConfianca * 100)%"></div>
+                                </div>
+                                <span class="ms-2">@(Model.ValorConfianca.Value.ToString("P0"))</span>
+                            </td>
+                        </tr>
+                    }
+                    <tr><th class="text-muted">Detectado em</th><td>@Model.DataCriacao.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                </table>
+                @if (!string.IsNullOrEmpty(Model.DetalhesTecnicos))
+                {
+                    <div class="mt-2">
+                        <small class="text-muted fw-semibold">Detalhes Técnicos:</small>
+                        <pre class="bg-light rounded p-2 small mt-1">@Model.DetalhesTecnicos</pre>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card border-success mb-3">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="fas fa-check me-2"></i>Aceitar Divergência</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Confirma que a divergência é válida e está correta.</p>
+                <form asp-action="Aceitar" method="post">
+                    <input type="hidden" name="divergenciaId" value="@Model.Id" />
+                    <div class="mb-2">
+                        <input type="text" name="nomeAuditor" class="form-control form-control-sm" placeholder="Seu nome *" required />
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="justificativa" class="form-control form-control-sm" rows="2" placeholder="Justificativa (opcional)"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-sm w-100">
+                        <i class="fas fa-check me-1"></i>Aceitar
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-danger mb-3">
+            <div class="card-header bg-danger text-white">
+                <h6 class="mb-0"><i class="fas fa-times me-2"></i>Rejeitar Divergência</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Indica que a divergência é um falso positivo.</p>
+                <form asp-action="Rejeitar" method="post">
+                    <input type="hidden" name="divergenciaId" value="@Model.Id" />
+                    <div class="mb-2">
+                        <input type="text" name="nomeAuditor" class="form-control form-control-sm" placeholder="Seu nome *" required />
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="justificativa" class="form-control form-control-sm" rows="2" placeholder="Justificativa *" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-danger btn-sm w-100">
+                        <i class="fas fa-times me-1"></i>Rejeitar
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-warning">
+            <div class="card-header bg-warning">
+                <h6 class="mb-0"><i class="fas fa-edit me-2"></i>Solicitar Correção</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Solicita correção do documento ou dado.</p>
+                <form asp-action="SolicitarCorrecao" method="post">
+                    <input type="hidden" name="divergenciaId" value="@Model.Id" />
+                    <div class="mb-2">
+                        <input type="text" name="nomeAuditor" class="form-control form-control-sm" placeholder="Seu nome *" required />
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="justificativa" class="form-control form-control-sm" rows="2" placeholder="Justificativa"></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="observacaoCorrecao" class="form-control form-control-sm" rows="2" placeholder="O que deve ser corrigido *" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-warning btn-sm w-100">
+                        <i class="fas fa-edit me-1"></i>Solicitar Correção
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <a asp-action="Fila" class="btn btn-outline-secondary w-100">
+                <i class="fas fa-arrow-left me-1"></i>Voltar à Fila
+            </a>
+        </div>
+    </div>
+</div>

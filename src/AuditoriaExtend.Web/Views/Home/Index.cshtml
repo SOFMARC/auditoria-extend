@@ -1,0 +1,48 @@
+@{
+    ViewData["Title"] = "Início";
+}
+
+<div class="text-center py-5">
+    <i class="fas fa-stethoscope fa-4x text-primary mb-3"></i>
+    <h1 class="display-5 fw-bold">Sistema de Auditoria Extend</h1>
+    <p class="lead text-muted">Auditoria inteligente de pedidos e guias médicas com integração à API Extend.</p>
+</div>
+
+<div class="row g-4 justify-content-center">
+    <div class="col-md-4">
+        <div class="card h-100 border-primary">
+            <div class="card-body text-center">
+                <i class="fas fa-upload fa-3x text-primary mb-3"></i>
+                <h4>Importação</h4>
+                <p class="text-muted">Faça upload de arquivos ZIP com documentos médicos para processamento e auditoria automática.</p>
+                <a asp-controller="Importacao" asp-action="Upload" class="btn btn-primary">
+                    <i class="fas fa-upload me-1"></i>Importar Arquivo
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-warning">
+            <div class="card-body text-center">
+                <i class="fas fa-tasks fa-3x text-warning mb-3"></i>
+                <h4>Revisão Humana</h4>
+                <p class="text-muted">Revise as divergências detectadas automaticamente, aceite, rejeite ou solicite correções.</p>
+                <a asp-controller="RevisaoHumana" asp-action="Fila" class="btn btn-warning">
+                    <i class="fas fa-tasks me-1"></i>Abrir Fila
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-info">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-bar fa-3x text-info mb-3"></i>
+                <h4>Auditoria</h4>
+                <p class="text-muted">Visualize todas as divergências detectadas, filtre por severidade e exporte relatórios.</p>
+                <a asp-controller="Auditoria" asp-action="Divergencias" class="btn btn-info text-white">
+                    <i class="fas fa-exclamation-triangle me-1"></i>Ver Divergências
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

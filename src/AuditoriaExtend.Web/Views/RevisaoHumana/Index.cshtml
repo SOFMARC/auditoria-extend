@@ -1,0 +1,138 @@
+@using AuditoriaExtend.Application.DTOs
+@model EstatisticasRevisaoDto
+@{
+    ViewData["Title"] = "Revisão Humana";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="fas fa-user-check me-2 text-warning"></i>Revisão Humana</h2>
+        <p class="text-muted">Painel de controle do processo de revisão de divergências.</p>
+    </div>
+    <div class="col-auto">
+        <a asp-action="Fila" class="btn btn-warning">
+            <i class="fas fa-tasks me-1"></i>Ir para Fila (@Model.TotalPendentes)
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-warning">
+            <div class="card-body">
+                <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                <h4 class="mb-0">@Model.TotalPendentes</h4>
+                <small class="text-muted">Pendentes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-secondary">
+            <div class="card-body">
+                <i class="fas fa-gavel fa-2x text-secondary mb-2"></i>
+                <h4 class="mb-0">@Model.TotalRevisados</h4>
+                <small class="text-muted">Revisados</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-success">
+            <div class="card-body">
+                <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                <h4 class="mb-0">@Model.TotalAceitos</h4>
+                <small class="text-muted">Aceitos</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-danger">
+            <div class="card-body">
+                <i class="fas fa-times-circle fa-2x text-danger mb-2"></i>
+                <h4 class="mb-0">@Model.TotalRejeitados</h4>
+                <small class="text-muted">Rejeitados</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-warning">
+            <div class="card-body">
+                <i class="fas fa-edit fa-2x text-warning mb-2"></i>
+                <h4 class="mb-0">@Model.TotalCorrecoesSolicitadas</h4>
+                <small class="text-muted">Correções</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-4">
+        <div class="card text-center border-info">
+            <div class="card-body">
+                <i class="fas fa-percentage fa-2x text-info mb-2"></i>
+                <h4 class="mb-0">@Model.TaxaAceitacao%</h4>
+                <small class="text-muted">Taxa Aceitação</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Ações Rápidas</h5></div>
+            <div class="card-body d-flex flex-column gap-2">
+                <a asp-action="Fila" class="btn btn-warning">
+                    <i class="fas fa-tasks me-2"></i>Abrir Fila de Revisão
+                    @if (Model.TotalPendentes > 0)
+                    {
+                        <span class="badge bg-dark ms-1">@Model.TotalPendentes</span>
+                    }
+                </a>
+                <a asp-action="Historico" class="btn btn-outline-secondary">
+                    <i class="fas fa-history me-2"></i>Ver Histórico de Revisões
+                </a>
+                <a asp-action="Relatorio" class="btn btn-outline-success">
+                    <i class="fas fa-download me-2"></i>Exportar Relatório CSV
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="mb-0">Distribuição de Decisões</h5></div>
+            <div class="card-body">
+                @if (Model.TotalRevisados > 0)
+                {
+                    var pAceitos = (int)(Model.TotalAceitos * 100.0 / Model.TotalRevisados);
+                    var pRejeitados = (int)(Model.TotalRejeitados * 100.0 / Model.TotalRevisados);
+                    var pCorrecoes = 100 - pAceitos - pRejeitados;
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-success">Aceitos</span><span>@Model.TotalAceitos (@pAceitos%)</span>
+                        </div>
+                        <div class="progress" style="height:10px">
+                            <div class="progress-bar bg-success" style="width:@pAceitos%"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-danger">Rejeitados</span><span>@Model.TotalRejeitados (@pRejeitados%)</span>
+                        </div>
+                        <div class="progress" style="height:10px">
+                            <div class="progress-bar bg-danger" style="width:@pRejeitados%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-warning">Correções</span><span>@Model.TotalCorrecoesSolicitadas (@pCorrecoes%)</span>
+                        </div>
+                        <div class="progress" style="height:10px">
+                            <div class="progress-bar bg-warning" style="width:@pCorrecoes%"></div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted text-center py-3">Nenhuma revisão realizada ainda.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
