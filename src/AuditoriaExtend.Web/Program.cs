@@ -45,3 +45,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// Expõe a classe Program para os testes de integração (WebApplicationFactory)
+public partial class Program { }
