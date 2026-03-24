@@ -67,14 +67,37 @@ public class DocumentoService : IDocumentoService
         await _repo.SaveChangesAsync();
     }
 
-    public async Task SalvarDadosExtracaoAsync(int id, string dadosJson, double confianca, string extractorId)
+    /// <summary>
+    /// Persiste os dados retornados pelo webhook da Extend após a extração.
+    /// Atualiza: DadosExtraidos (JSON dos campos), ConfiancaOcr, ReviewAgentScore, ExtractorId.
+    /// Status é atualizado para Processado.
+    /// </summary>
+    public async Task SalvarDadosExtracaoAsync(int id, string dadosJson, double confianca, string extractorId, int? reviewAgentScore = null)
     {
         var doc = await _repo.GetByIdAsync(id);
         if (doc == null) return;
         doc.DadosExtraidos = dadosJson;
         doc.ConfiancaOcr = confianca;
         doc.ExtractorId = extractorId;
+        doc.ReviewAgentScore = reviewAgentScore;
         doc.Status = StatusDocumento.Processado;
+        doc.DataAtualizacao = DateTime.UtcNow;
+        await _repo.UpdateAsync(doc);
+        await _repo.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Salva o FileId e RunId retornados pela Extend após o upload e início da extração.
+    /// Atualiza o status do documento para AguardandoExtend.
+    /// </summary>
+    public async Task SalvarExtendRunIdAsync(int id, string extendFileId, string extendRunId, string extractorId)
+    {
+        var doc = await _repo.GetByIdAsync(id);
+        if (doc == null) return;
+        doc.ExtendFileId = extendFileId;
+        doc.ExtendRunId = extendRunId;
+        doc.ExtractorId = extractorId;
+        doc.Status = StatusDocumento.AguardandoExtend;
         doc.DataAtualizacao = DateTime.UtcNow;
         await _repo.UpdateAsync(doc);
         await _repo.SaveChangesAsync();
@@ -85,6 +108,21 @@ public class DocumentoService : IDocumentoService
         var doc = await _repo.GetByIdAsync(id);
         if (doc == null) return;
         doc.AtendimentoAgrupadoId = atendimentoAgrupadoId;
+        doc.DataAtualizacao = DateTime.UtcNow;
+        await _repo.UpdateAsync(doc);
+        await _repo.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Atualiza as flags de auditoria do documento: OrigemSuspeita e RevisaoHumanaNecessaria.
+    /// Chamado pelo AuditoriaRegraService após aplicar as regras C e D.
+    /// </summary>
+    public async Task AtualizarFlagsAuditoriaAsync(int id, bool origemSuspeita, bool revisaoHumanaNecessaria)
+    {
+        var doc = await _repo.GetByIdAsync(id);
+        if (doc == null) return;
+        doc.OrigemSuspeita = origemSuspeita;
+        doc.RevisaoHumanaNecessaria = revisaoHumanaNecessaria;
         doc.DataAtualizacao = DateTime.UtcNow;
         await _repo.UpdateAsync(doc);
         await _repo.SaveChangesAsync();

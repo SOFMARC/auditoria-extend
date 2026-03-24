@@ -1,6 +1,7 @@
 using Serilog;
 using AuditoriaExtend.Infrastructure;
 using AuditoriaExtend.Application;
+using AuditoriaExtend.Application.Services;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -17,6 +18,10 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddApplication();
 
+    // Configuração das regras de auditoria (modo Assistido por padrão)
+    builder.Services.Configure<AuditoriaOptions>(
+        builder.Configuration.GetSection(AuditoriaOptions.SectionName));
+
     var app = builder.Build();
 
     if (!app.Environment.IsDevelopment())
@@ -30,9 +35,15 @@ try
     app.UseRouting();
     app.UseAuthorization();
 
+    // Rota padrão MVC
     app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}");
+
+    // Rota da API de webhook (recebe callbacks da Extend)
+    app.MapControllerRoute(
+        name: "api",
+        pattern: "api/{controller}/{action=Index}/{id?}");
 
     Log.Information("Aplicação iniciada com sucesso");
     await app.RunAsync();

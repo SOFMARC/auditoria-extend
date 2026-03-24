@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using AuditoriaExtend.Application.Configuration;
 using AuditoriaExtend.Application.DTOs;
 using AuditoriaExtend.Application.Interfaces;
 using AuditoriaExtend.Application.Services;
@@ -10,15 +13,15 @@ namespace AuditoriaExtend.Tests.UnitTests.Services;
 
 /// <summary>
 /// Testes unitários para ImportacaoService.
-/// Valida as regras de negócio da camada Application de forma isolada,
-/// usando mocks para todas as dependências externas.
+/// Valida o fluxo de importação: receber ZIP → extrair → classificar → enviar para Extend.
+/// As regras de auditoria (A-G) NÃO são executadas aqui — ocorrem no WebhookProcessorService.
 /// </summary>
 public class ImportacaoServiceTests : IDisposable
 {
     // ── Mocks das dependências ──────────────────────────────────────────────
     private readonly Mock<ILoteService> _loteServiceMock;
     private readonly Mock<IDocumentoService> _documentoServiceMock;
-    private readonly Mock<IAuditoriaRegraService> _auditoriaServiceMock;
+    private readonly Mock<IExtendClient> _extendClientMock;
 
     // ── Sistema sob teste ───────────────────────────────────────────────────
     private readonly ImportacaoService _sut;
@@ -26,16 +29,25 @@ public class ImportacaoServiceTests : IDisposable
     // ── Diretório temporário para arquivos físicos ──────────────────────────
     private readonly string _tempDir;
 
+    // ── Opções de configuração ──────────────────────────────────────────────
+    private static readonly ExtendClientOptions ExtendOpts = new()
+    {
+        ExtractorIdGuiaSPSADT   = "ext-guia-001",
+        ExtractorIdPedidoMedico = "ext-pedido-001"
+    };
+
     public ImportacaoServiceTests()
     {
-        _loteServiceMock = new Mock<ILoteService>();
+        _loteServiceMock    = new Mock<ILoteService>();
         _documentoServiceMock = new Mock<IDocumentoService>();
-        _auditoriaServiceMock = new Mock<IAuditoriaRegraService>();
+        _extendClientMock   = new Mock<IExtendClient>();
 
         _sut = new ImportacaoService(
             _loteServiceMock.Object,
             _documentoServiceMock.Object,
-            _auditoriaServiceMock.Object
+            _extendClientMock.Object,
+            Options.Create(ExtendOpts),
+            NullLogger<ImportacaoService>.Instance
         );
 
         _tempDir = Path.Combine(Path.GetTempPath(), $"auditoria_tests_{Guid.NewGuid():N}");
@@ -53,7 +65,7 @@ public class ImportacaoServiceTests : IDisposable
     {
         // Arrange
         var nomeArquivo = "lote_jan_2025.zip";
-        var tamanho = 2 * 1024 * 1024L; // 2 MB
+        var tamanho = 2 * 1024 * 1024L;
         var stream = ZipHelper.CriarZipValido("guia_001.pdf", "pedido_001.pdf");
         var loteEsperado = new LoteBuilder().ComNome(nomeArquivo).ComStatus(StatusLote.Pendente).Build();
 
@@ -103,60 +115,68 @@ public class ImportacaoServiceTests : IDisposable
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TU-IMP-04: Processamento de lote válido
+    // TU-IMP-04: Processamento de lote — envio para Extend
     // ═══════════════════════════════════════════════════════════════════════
 
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_LoteValido_AtualizaStatusParaProcessandoEConcluido()
+    public async Task ProcessarLoteAsync_LoteValido_AtualizaStatusProcessandoEAguardandoExtend()
     {
         // Arrange
         var loteId = 42;
         var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_sp_001.pdf", "pedido_001.pdf");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
             .Returns(Task.CompletedTask);
+
         _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new DocumentoDto { Id = 1, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.SalvarExtendRunIdAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("file-id-001");
+        _extendClientMock.Setup(e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("run-id-001");
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert — verifica a sequência: Processando → Concluido
+        // Assert — sequência: Processando → AguardandoExtend
         _loteServiceMock.Verify(
             s => s.AtualizarStatusAsync(loteId, StatusLote.Processando, null),
             Times.Once,
             "O status deve ser atualizado para Processando no início");
 
         _loteServiceMock.Verify(
-            s => s.AtualizarStatusAsync(loteId, StatusLote.Concluido, null),
+            s => s.AtualizarStatusAsync(loteId, StatusLote.AguardandoExtend, null),
             Times.Once,
-            "O status deve ser atualizado para Concluido ao final");
+            "O status deve ser atualizado para AguardandoExtend após envio para Extend");
     }
 
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_LoteValido_CriaDocumentosParaCadaArquivoPdf()
+    public async Task ProcessarLoteAsync_LoteValido_EnviaArquivosParaExtendIndividualmente()
     {
         // Arrange
         var loteId = 10;
-        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_001.pdf", "pedido_001.pdf", "laudo_001.pdf");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_001.pdf", "pedido_001.pdf", "guia_002.pdf");
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
             .Returns(Task.CompletedTask);
 
         var docIdCounter = 0;
@@ -164,56 +184,82 @@ public class ImportacaoServiceTests : IDisposable
             .ReturnsAsync(() => new DocumentoDto { Id = ++docIdCounter, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.SalvarExtendRunIdAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("file-id-xxx");
+        _extendClientMock.Setup(e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("run-id-xxx");
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert — 3 arquivos PDF → 3 chamadas a CriarAsync
-        _documentoServiceMock.Verify(
-            s => s.CriarAsync(loteId, It.IsAny<string>(), It.IsAny<string>()),
+        // Assert — 3 arquivos → 3 chamadas a UploadFileAsync e IniciarExtracaoAsync
+        _extendClientMock.Verify(
+            e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Exactly(3),
-            "Deve criar um documento para cada arquivo PDF no ZIP");
+            "Deve enviar cada arquivo individualmente para a Extend via UploadFileAsync");
+
+        _extendClientMock.Verify(
+            e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(3),
+            "Deve iniciar uma extração por arquivo via IniciarExtracaoAsync");
     }
 
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_LoteValido_ClassificaCorretamenteTipoGuia()
+    public async Task ProcessarLoteAsync_LoteValido_ClassificaGuiaSPSADTCorretamente()
     {
         // Arrange
         var loteId = 20;
         var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_sp_001.pdf");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
             .Returns(Task.CompletedTask);
+
         _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new DocumentoDto { Id = 1, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.SalvarExtendRunIdAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("file-id-guia");
+        _extendClientMock.Setup(e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("run-id-guia");
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert — arquivo com "guia_sp" no nome → TipoDocumento.GuiaSPSADT
+        // Assert — arquivo com "guia_sp" → TipoDocumento.GuiaSPSADT
         _documentoServiceMock.Verify(
             s => s.AtualizarTipoAsync(1, TipoDocumento.GuiaSPSADT),
             Times.Once,
             "Arquivo com 'guia_sp' no nome deve ser classificado como GuiaSPSADT");
+
+        // E deve usar o extractor correto para GuiaSPSADT
+        _extendClientMock.Verify(
+            e => e.IniciarExtracaoAsync("file-id-guia", ExtendOpts.ExtractorIdGuiaSPSADT, It.IsAny<CancellationToken>()),
+            Times.Once,
+            "Deve usar o ExtractorIdGuiaSPSADT para documentos do tipo GuiaSPSADT");
     }
 
     [Theory]
     [InlineData("pedido_medico_001.pdf", TipoDocumento.PedidoMedico)]
     [InlineData("solicitacao_exame.pdf", TipoDocumento.PedidoMedico)]
-    [InlineData("laudo_patologia.pdf", TipoDocumento.Laudo)]
-    [InlineData("receita_medica.pdf", TipoDocumento.Receita)]
+    [InlineData("laudo_patologia.pdf",   TipoDocumento.Laudo)]
+    [InlineData("receita_medica.pdf",    TipoDocumento.Receita)]
     [InlineData("documento_desconhecido.pdf", TipoDocumento.Desconhecido)]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
@@ -223,24 +269,32 @@ public class ImportacaoServiceTests : IDisposable
         // Arrange
         var loteId = 30;
         var zipPath = ZipHelper.CriarZipFisico(_tempDir, nomeArquivo);
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
             .Returns(Task.CompletedTask);
+
         _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new DocumentoDto { Id = 99, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.SalvarExtendRunIdAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("file-id-xxx");
+        _extendClientMock.Setup(e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("run-id-xxx");
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert
+        // Assert — tipo classificado corretamente pelo nome
         _documentoServiceMock.Verify(
             s => s.AtualizarTipoAsync(99, tipoEsperado),
             Times.Once,
@@ -248,7 +302,7 @@ public class ImportacaoServiceTests : IDisposable
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TU-IMP-05: Processamento de ZIP corrompido
+    // TU-IMP-05: Lote não encontrado / ZIP corrompido
     // ═══════════════════════════════════════════════════════════════════════
 
     [Fact]
@@ -272,13 +326,12 @@ public class ImportacaoServiceTests : IDisposable
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_ZipCorrompido_AtualizaStatusParaErro()
+    public async Task ProcessarLoteAsync_ZipNaoEncontrado_AtualizaStatusParaErro()
     {
         // Arrange
         var loteId = 55;
-        // Caminho de arquivo que não existe → ZipFile.ExtractToDirectory lança exceção
         var caminhoInexistente = Path.Combine(_tempDir, "nao_existe.zip");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(caminhoInexistente).Build();
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(caminhoInexistente).ComCaminho(caminhoInexistente).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
@@ -287,9 +340,9 @@ public class ImportacaoServiceTests : IDisposable
         // Act
         var act = async () => await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert — deve propagar a exceção e ter atualizado o status para Erro
+        // Assert
         await act.Should().ThrowAsync<Exception>(
-            "uma exceção deve ser propagada quando o ZIP não pode ser processado");
+            "uma exceção deve ser propagada quando o ZIP não existe");
 
         _loteServiceMock.Verify(
             s => s.AtualizarStatusAsync(loteId, StatusLote.Erro, It.IsAny<string>()),
@@ -305,7 +358,7 @@ public class ImportacaoServiceTests : IDisposable
         // Arrange
         var loteId = 56;
         var caminhoInexistente = Path.Combine(_tempDir, "corrompido.zip");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(caminhoInexistente).Build();
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(caminhoInexistente).ComCaminho(caminhoInexistente).Build();
 
         string? mensagemCapturada = null;
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
@@ -324,81 +377,124 @@ public class ImportacaoServiceTests : IDisposable
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Testes de auditoria e detecção de duplicidades
+    // TU-IMP-06: Falha na Extend — documento marcado como Erro
     // ═══════════════════════════════════════════════════════════════════════
 
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_LoteValido_ExecutaAuditoriaPorDocumento()
+    public async Task ProcessarLoteAsync_ExtendFalha_DocumentoMarcadoComoErro()
     {
         // Arrange
-        var loteId = 70;
-        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_001.pdf", "pedido_001.pdf");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var loteId = 60;
+        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_001.pdf");
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
             .Returns(Task.CompletedTask);
 
-        var docIdCounter = 0;
         _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(() => new DocumentoDto { Id = ++docIdCounter, LoteId = loteId });
+            .ReturnsAsync(new DocumentoDto { Id = 5, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        // Simula falha na Extend
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ExtendApiException("Unauthorized: API key inválida"));
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert — 2 documentos → 2 chamadas a AuditarDocumentoAsync
-        _auditoriaServiceMock.Verify(
-            s => s.AuditarDocumentoAsync(It.IsAny<int>()),
-            Times.Exactly(2),
-            "AuditarDocumentoAsync deve ser chamado uma vez por documento");
-
-        // E DetectarDuplicidades deve ser chamado uma vez ao final do lote
-        _auditoriaServiceMock.Verify(
-            s => s.DetectarDuplicidadesAsync(loteId),
+        // Assert — documento deve ser marcado como Erro
+        _documentoServiceMock.Verify(
+            s => s.AtualizarStatusAsync(5, StatusDocumento.Erro, It.Is<string>(m => m.Contains("Unauthorized"))),
             Times.Once,
-            "DetectarDuplicidadesAsync deve ser chamado uma vez ao final do processamento do lote");
+            "Documento deve ser marcado como Erro quando a Extend retorna falha");
     }
 
     [Fact]
     [Trait("Categoria", "Unitario")]
     [Trait("Modulo", "Importacao")]
-    public async Task ProcessarLoteAsync_LoteValido_IncrementaContadorPorDocumento()
+    public async Task ProcessarLoteAsync_TodosArquivosComErroExtend_StatusLoteErro()
     {
         // Arrange
-        var loteId = 80;
-        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "doc1.pdf", "doc2.pdf", "doc3.pdf");
-        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).Build();
+        var loteId = 61;
+        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_001.pdf");
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
 
         _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
         _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
-        _loteServiceMock.Setup(s => s.IncrementarProcessadosAsync(It.IsAny<int>()))
-            .Returns(Task.CompletedTask);
 
-        var counter = 0;
         _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(() => new DocumentoDto { Id = ++counter, LoteId = loteId });
+            .ReturnsAsync(new DocumentoDto { Id = 1, LoteId = loteId });
         _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
             .Returns(Task.CompletedTask);
-        _auditoriaServiceMock.Setup(s => s.AuditarDocumentoAsync(It.IsAny<int>())).ReturnsAsync(0);
-        _auditoriaServiceMock.Setup(s => s.DetectarDuplicidadesAsync(It.IsAny<int>())).ReturnsAsync(0);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ExtendApiException("Falha no upload"));
 
         // Act
         await _sut.ProcessarLoteAsync(loteId);
 
-        // Assert
+        // Assert — lote deve ser marcado como Erro quando todos os arquivos falharam
         _loteServiceMock.Verify(
-            s => s.IncrementarProcessadosAsync(loteId),
-            Times.Exactly(3),
-            "IncrementarProcessadosAsync deve ser chamado uma vez por documento processado");
+            s => s.AtualizarStatusAsync(loteId, StatusLote.Erro, It.IsAny<string>()),
+            Times.Once,
+            "O lote deve ser marcado como Erro quando todos os arquivos falharam no envio para Extend");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TU-IMP-07: Salvar RunId no banco após envio para Extend
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    [Trait("Categoria", "Unitario")]
+    [Trait("Modulo", "Importacao")]
+    public async Task ProcessarLoteAsync_EnvioExtendSucesso_SalvaRunIdNoBanco()
+    {
+        // Arrange
+        var loteId = 70;
+        var zipPath = ZipHelper.CriarZipFisico(_tempDir, "guia_sp_001.pdf");
+        var loteDto = new LoteBuilder().ComId(loteId).ComNome(zipPath).ComCaminho(zipPath).Build();
+        var fileIdRetornado = "file-abc-123";
+        var runIdRetornado  = "run-xyz-456";
+
+        _loteServiceMock.Setup(s => s.ObterPorIdAsync(loteId)).ReturnsAsync(loteDto);
+        _loteServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusLote>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        _loteServiceMock.Setup(s => s.IncrementarEnviadosExtendAsync(It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        _documentoServiceMock.Setup(s => s.CriarAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new DocumentoDto { Id = 7, LoteId = loteId });
+        _documentoServiceMock.Setup(s => s.AtualizarTipoAsync(It.IsAny<int>(), It.IsAny<TipoDocumento>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.SalvarExtendRunIdAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _documentoServiceMock.Setup(s => s.AtualizarStatusAsync(It.IsAny<int>(), It.IsAny<StatusDocumento>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        _extendClientMock.Setup(e => e.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fileIdRetornado);
+        _extendClientMock.Setup(e => e.IniciarExtracaoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(runIdRetornado);
+
+        // Act
+        await _sut.ProcessarLoteAsync(loteId);
+
+        // Assert — RunId e FileId devem ser salvos no banco
+        _documentoServiceMock.Verify(
+            s => s.SalvarExtendRunIdAsync(7, fileIdRetornado, runIdRetornado, ExtendOpts.ExtractorIdGuiaSPSADT),
+            Times.Once,
+            "O RunId e FileId retornados pela Extend devem ser salvos no banco de dados");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -407,11 +503,9 @@ public class ImportacaoServiceTests : IDisposable
 
     public void Dispose()
     {
-        // Limpa arquivos temporários criados durante os testes
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
 
-        // Limpa a pasta de uploads criada pelo ImportacaoService
         var uploadsDir = Path.Combine("wwwroot", "uploads", "lotes");
         if (Directory.Exists(uploadsDir))
             try { Directory.Delete(uploadsDir, recursive: true); } catch { /* ignora */ }

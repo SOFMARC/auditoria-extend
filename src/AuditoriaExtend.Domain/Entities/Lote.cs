@@ -8,9 +8,14 @@ public class Lote : EntityBase
     public string CaminhoArquivo { get; set; } = string.Empty;
     public long TamanhoArquivo { get; set; }
     public StatusLote Status { get; set; } = StatusLote.Pendente;
+
+    // Contadores de progresso
     public int QuantidadeDocumentos { get; set; }
+    public int QuantidadeEnviadosExtend { get; set; }
     public int QuantidadeProcessados { get; set; }
     public int QuantidadeDivergencias { get; set; }
+    public int QuantidadeRevisaoHumana { get; set; }
+
     public string? MensagemErro { get; set; }
     public DateTime? DataInicioProcesamento { get; set; }
     public DateTime? DataFimProcessamento { get; set; }

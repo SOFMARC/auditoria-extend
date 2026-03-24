@@ -11,6 +11,7 @@ public class LoteBuilder
 {
     private int _id = 1;
     private string _nomeArquivo = "lote_teste.zip";
+    private string _caminhoArquivo = string.Empty;
     private long _tamanhoArquivo = 1024 * 1024; // 1 MB
     private StatusLote _status = StatusLote.Pendente;
     private int _quantidadeDocumentos = 0;
@@ -20,6 +21,7 @@ public class LoteBuilder
 
     public LoteBuilder ComId(int id) { _id = id; return this; }
     public LoteBuilder ComNome(string nome) { _nomeArquivo = nome; return this; }
+    public LoteBuilder ComCaminho(string caminho) { _caminhoArquivo = caminho; return this; }
     public LoteBuilder ComTamanho(long tamanho) { _tamanhoArquivo = tamanho; return this; }
     public LoteBuilder ComStatus(StatusLote status) { _status = status; return this; }
     public LoteBuilder ComDocumentos(int total, int processados = 0) { _quantidadeDocumentos = total; _quantidadeProcessados = processados; return this; }
@@ -29,6 +31,7 @@ public class LoteBuilder
     {
         Id = _id,
         NomeArquivo = _nomeArquivo,
+        CaminhoArquivo = _caminhoArquivo,
         TamanhoArquivo = _tamanhoArquivo,
         Status = _status,
         QuantidadeDocumentos = _quantidadeDocumentos,

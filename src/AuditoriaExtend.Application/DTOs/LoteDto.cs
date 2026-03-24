@@ -6,6 +6,7 @@ public class LoteDto
 {
     public int Id { get; set; }
     public string NomeArquivo { get; set; } = string.Empty;
+    public string CaminhoArquivo { get; set; } = string.Empty;
     public long TamanhoArquivo { get; set; }
     public StatusLote Status { get; set; }
     public int QuantidadeDocumentos { get; set; }
