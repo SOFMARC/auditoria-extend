@@ -23,13 +23,7 @@ public class AuditoriaDbContext : DbContext
             e.Property(l => l.NomeArquivo).HasMaxLength(500).IsRequired();
             e.Property(l => l.CaminhoArquivo).HasMaxLength(1000);
             e.Property(l => l.MensagemErro).HasMaxLength(2000);
-            // Mapeamento explicito: propriedades C# -> colunas SQL
-            e.Property(l => l.QuantidadeDocumentos).HasColumnName("TotalDocumentos");
-            e.Property(l => l.QuantidadeEnviadosExtend).HasColumnName("EnviadosExtend");
-            e.Property(l => l.QuantidadeProcessados).HasColumnName("DocumentosProcessados");
-            e.Property(l => l.QuantidadeDivergencias).HasColumnName("TotalDivergencias");
-            e.Property(l => l.QuantidadeRevisaoHumana).HasColumnName("TotalRevisaoHumana");
-            e.Property(l => l.DataInicioProcesamento).HasColumnName("DataInicioProcessamento");
+            // Colunas SQL alinham com as propriedades C# (sem mapeamento explicito necessario)
             e.HasMany(l => l.Documentos).WithOne(d => d.Lote).HasForeignKey(d => d.LoteId).OnDelete(DeleteBehavior.Cascade);
         });
 

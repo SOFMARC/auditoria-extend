@@ -1,160 +1,206 @@
 -- ============================================================
--- Sistema de Auditoria de Pedidos e Guias Médicas
--- Script: 01_CreateTables.sql  |  Versão: 2.0 (Clean Architecture)
--- Execute no SQL Server Management Studio ou Azure Data Studio
+-- Sistema de Auditoria Extend
+-- Script principal ajustado conforme entities + mapeamento EF
+-- Criação do zero, sem migrations
 -- ============================================================
 
--- Crie o banco antes de executar (ajuste o nome se necessário):
--- CREATE DATABASE AuditoriaExtendDB;
--- GO
--- USE AuditoriaExtendDB;
--- GO
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RevisoesHumanas]') AND type = N'U')
+    DROP TABLE [dbo].[RevisoesHumanas];
+
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[DivergenciasAuditoria]') AND type = N'U')
+    DROP TABLE [dbo].[DivergenciasAuditoria];
+
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Documentos]') AND type = N'U')
+    DROP TABLE [dbo].[Documentos];
+
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[AtendimentosAgrupados]') AND type = N'U')
+    DROP TABLE [dbo].[AtendimentosAgrupados];
+
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Lotes]') AND type = N'U')
+    DROP TABLE [dbo].[Lotes];
+GO
 
 -- ============================================================
 -- Tabela: Lotes
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Lotes')
-BEGIN
-    CREATE TABLE Lotes (
-        Id                      INT IDENTITY(1,1) NOT NULL,
-        NomeArquivo             NVARCHAR(500)     NOT NULL,
-        CaminhoArquivo          NVARCHAR(1000)    NULL,
-        TamanhoArquivo          BIGINT            NOT NULL DEFAULT 0,
-        Status                  INT               NOT NULL DEFAULT 0,
-            -- 0=Pendente | 1=Processando | 2=Concluido | 3=Erro
-        TotalDocumentos         INT               NOT NULL DEFAULT 0,
-        DocumentosProcessados   INT               NOT NULL DEFAULT 0,
-        DocumentosComErro       INT               NOT NULL DEFAULT 0,
-        MensagemErro            NVARCHAR(2000)    NULL,
-        DataCriacao             DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataAtualizacao         DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataInicioProcessamento DATETIME2         NULL,
-        DataFimProcessamento    DATETIME2         NULL,
-        CONSTRAINT PK_Lotes PRIMARY KEY (Id)
-    );
-    PRINT 'Tabela Lotes criada.';
-END
-ELSE PRINT 'Tabela Lotes ja existe.';
-GO
+CREATE TABLE [dbo].[Lotes]
+(
+    [Id]                         INT IDENTITY(1,1) NOT NULL,
+    [NomeArquivo]                NVARCHAR(500) NOT NULL,
+    [CaminhoArquivo]             NVARCHAR(1000) NOT NULL,
+    [TamanhoArquivo]             BIGINT NOT NULL,
+    [Status]                     INT NOT NULL DEFAULT 0,
 
--- ============================================================
--- Tabela: Documentos
--- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Documentos')
-BEGIN
-    CREATE TABLE Documentos (
-        Id              INT IDENTITY(1,1) NOT NULL,
-        LoteId          INT               NOT NULL,
-        NomeArquivo     NVARCHAR(500)     NOT NULL,
-        CaminhoArquivo  NVARCHAR(1000)    NULL,
-        TamanhoArquivo  BIGINT            NOT NULL DEFAULT 0,
-        TipoDocumento   INT               NOT NULL DEFAULT 0,
-            -- 0=Desconhecido | 1=GuiaSP | 2=GuiaSADT | 3=PedidoMedico | 4=Laudo | 5=Outro
-        Status          INT               NOT NULL DEFAULT 0,
-            -- 0=Pendente | 1=Processando | 2=Concluido | 3=Erro
-        ConfiancaOCR    FLOAT             NULL,
-        JsonExtracao    NVARCHAR(MAX)     NULL,
-        MensagemErro    NVARCHAR(2000)    NULL,
-        DataCriacao     DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataAtualizacao DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT PK_Documentos PRIMARY KEY (Id),
-        CONSTRAINT FK_Documentos_Lotes FOREIGN KEY (LoteId)
-            REFERENCES Lotes(Id) ON DELETE CASCADE
-    );
-    PRINT 'Tabela Documentos criada.';
-END
-ELSE PRINT 'Tabela Documentos ja existe.';
+    [QuantidadeDocumentos]       INT NOT NULL DEFAULT 0,
+    [QuantidadeEnviadosExtend]   INT NOT NULL DEFAULT 0,
+    [QuantidadeProcessados]      INT NOT NULL DEFAULT 0,
+    [QuantidadeDivergencias]     INT NOT NULL DEFAULT 0,
+    [QuantidadeRevisaoHumana]    INT NOT NULL DEFAULT 0,
+
+    [MensagemErro]               NVARCHAR(2000) NULL,
+    [DataInicioProcessamento]    DATETIME2 NULL,
+    [DataFimProcessamento]       DATETIME2 NULL,
+
+    -- Ajustado para refletir o comportamento atual do C#
+    [DataCriacao]                DATETIME2 NULL CONSTRAINT [DF_Lotes_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]            DATETIME2 NULL CONSTRAINT [DF_Lotes_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_Lotes] PRIMARY KEY ([Id])
+);
 GO
 
 -- ============================================================
 -- Tabela: AtendimentosAgrupados
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AtendimentosAgrupados')
-BEGIN
-    CREATE TABLE AtendimentosAgrupados (
-        Id                  INT IDENTITY(1,1) NOT NULL,
-        LoteId              INT               NOT NULL,
-        NomePaciente        NVARCHAR(200)     NULL,
-        NomeMedico          NVARCHAR(200)     NULL,
-        NumeroGuia          NVARCHAR(50)      NULL,
-        NumeroPedido        NVARCHAR(50)      NULL,
-        DataAtendimento     DATE              NULL,
-        TotalDocumentos     INT               NOT NULL DEFAULT 0,
-        TotalProcedimentos  INT               NOT NULL DEFAULT 0,
-        TotalDivergencias   INT               NOT NULL DEFAULT 0,
-        DataCriacao         DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataAtualizacao     DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT PK_AtendimentosAgrupados PRIMARY KEY (Id),
-        CONSTRAINT FK_Atendimentos_Lotes FOREIGN KEY (LoteId)
-            REFERENCES Lotes(Id) ON DELETE CASCADE
-    );
-    PRINT 'Tabela AtendimentosAgrupados criada.';
-END
-ELSE PRINT 'Tabela AtendimentosAgrupados ja existe.';
+CREATE TABLE [dbo].[AtendimentosAgrupados]
+(
+    [Id]                          INT IDENTITY(1,1) NOT NULL,
+    [LoteId]                      INT NOT NULL,
+
+    [NomePaciente]                NVARCHAR(200) NULL,
+    [NomeMedico]                  NVARCHAR(200) NULL,
+    [CrmMedico]                   NVARCHAR(50) NULL,
+    [NumeroGuia]                  NVARCHAR(100) NULL,
+    [NumeroPedido]                NVARCHAR(100) NULL,
+    [DataAtendimento]             DATETIME2 NULL,
+
+    [QuantidadeDocumentos]        INT NOT NULL DEFAULT 0,
+    [QuantidadeDivergencias]      INT NOT NULL DEFAULT 0,
+    [QuantidadeRevisaoHumana]     INT NOT NULL DEFAULT 0,
+
+    [ScoreRisco]                  FLOAT NOT NULL DEFAULT 0,
+    [RevisaoHumanaNecessaria]     BIT NOT NULL DEFAULT 0,
+
+    [DataCriacao]                 DATETIME2 NULL CONSTRAINT [DF_AtendimentosAgrupados_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]             DATETIME2 NULL CONSTRAINT [DF_AtendimentosAgrupados_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_AtendimentosAgrupados] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_AtendimentosAgrupados_Lotes]
+        FOREIGN KEY ([LoteId]) REFERENCES [dbo].[Lotes]([Id]) ON DELETE CASCADE
+);
+GO
+
+-- ============================================================
+-- Tabela: Documentos
+-- ============================================================
+CREATE TABLE [dbo].[Documentos]
+(
+    [Id]                           INT IDENTITY(1,1) NOT NULL,
+    [LoteId]                       INT NOT NULL,
+    [NomeArquivo]                  NVARCHAR(500) NOT NULL,
+    [CaminhoArquivo]               NVARCHAR(1000) NOT NULL,
+    [TipoDocumento]                INT NOT NULL DEFAULT 0,
+    [Status]                       INT NOT NULL DEFAULT 0,
+
+    -- Integração Extend
+    [ExtendFileId]                 NVARCHAR(200) NULL,
+    [ExtendRunId]                  NVARCHAR(200) NULL,
+    [ExtractorId]                  NVARCHAR(200) NULL,
+
+    -- Dados extraídos
+    [DadosExtraidos]               NVARCHAR(MAX) NULL,
+    [ConfiancaOcr]                 FLOAT NOT NULL DEFAULT 0,
+    [ReviewAgentScore]             INT NULL,
+
+    -- Flags de auditoria
+    [OrigemSuspeita]               BIT NOT NULL DEFAULT 0,
+    [RevisaoHumanaNecessaria]      BIT NOT NULL DEFAULT 0,
+
+    [MensagemErro]                 NVARCHAR(2000) NULL,
+    [AtendimentoAgrupadoId]        INT NULL,
+
+    [DataCriacao]                  DATETIME2 NULL CONSTRAINT [DF_Documentos_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]              DATETIME2 NULL CONSTRAINT [DF_Documentos_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_Documentos] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_Documentos_Lotes]
+        FOREIGN KEY ([LoteId]) REFERENCES [dbo].[Lotes]([Id]) ON DELETE CASCADE,
+    CONSTRAINT [FK_Documentos_AtendimentosAgrupados]
+        FOREIGN KEY ([AtendimentoAgrupadoId]) REFERENCES [dbo].[AtendimentosAgrupados]([Id]) ON DELETE NO ACTION
+);
 GO
 
 -- ============================================================
 -- Tabela: DivergenciasAuditoria
+-- Ajustada conforme seu OnModelCreating
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'DivergenciasAuditoria')
-BEGIN
-    CREATE TABLE DivergenciasAuditoria (
-        Id                    INT IDENTITY(1,1) NOT NULL,
-        DocumentoId           INT               NOT NULL,
-        AtendimentoAgrupadoId INT               NULL,
-        Tipo                  INT               NOT NULL,
-            -- 1=ConfiancaBaixa | 2=ProcedimentoNaoEncontrado | 3=Duplicidade
-            -- 4=OrigemSuspeita | 5=ValorForaDoPadrao | 6=DataInvalida | 7=CampoObrigatorioAusente
-        Severidade            INT               NOT NULL,
-            -- 1=Baixa | 2=Media | 3=Alta | 4=Critica
-        Status                INT               NOT NULL DEFAULT 0,
-            -- 0=Pendente | 1=EmRevisao | 2=Aceita | 3=Rejeitada | 4=CorrecaoSolicitada
-        Descricao             NVARCHAR(500)     NOT NULL,
-        DetalhesTecnicos      NVARCHAR(2000)    NULL,
-        CampoAfetado          NVARCHAR(100)     NULL,
-        ValorEncontrado       NVARCHAR(500)     NULL,
-        ValorEsperado         NVARCHAR(500)     NULL,
-        ValorConfianca        FLOAT             NULL,
-        DataCriacao           DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataAtualizacao       DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT PK_DivergenciasAuditoria PRIMARY KEY (Id),
-        CONSTRAINT FK_Divergencias_Documentos FOREIGN KEY (DocumentoId)
-            REFERENCES Documentos(Id) ON DELETE CASCADE,
-        CONSTRAINT FK_Divergencias_Atendimentos FOREIGN KEY (AtendimentoAgrupadoId)
-            REFERENCES AtendimentosAgrupados(Id) ON DELETE NO ACTION
-    );
-    PRINT 'Tabela DivergenciasAuditoria criada.';
-END
-ELSE PRINT 'Tabela DivergenciasAuditoria ja existe.';
+CREATE TABLE [dbo].[DivergenciasAuditoria]
+(
+    [Id]                         INT IDENTITY(1,1) NOT NULL,
+    [DocumentoId]                INT NOT NULL,
+    [AtendimentoAgrupadoId]      INT NULL,
+
+    [Tipo]                       INT NOT NULL,
+    [Severidade]                 INT NOT NULL,
+    [Status]                     INT NOT NULL DEFAULT 0,
+
+    [Descricao]                  NVARCHAR(500) NOT NULL,
+    [DetalhesTecnicos]           NVARCHAR(2000) NULL,
+    [ValorConfianca]             FLOAT NULL,
+    [CampoAfetado]               NVARCHAR(100) NULL,
+    [ValorEncontrado]            NVARCHAR(500) NULL,
+    [ValorEsperado]              NVARCHAR(500) NULL,
+
+    [DataCriacao]                DATETIME2 NULL CONSTRAINT [DF_DivergenciasAuditoria_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]            DATETIME2 NULL CONSTRAINT [DF_DivergenciasAuditoria_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_DivergenciasAuditoria] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_DivergenciasAuditoria_Documentos]
+        FOREIGN KEY ([DocumentoId]) REFERENCES [dbo].[Documentos]([Id]) ON DELETE CASCADE,
+    CONSTRAINT [FK_DivergenciasAuditoria_AtendimentosAgrupados]
+        FOREIGN KEY ([AtendimentoAgrupadoId]) REFERENCES [dbo].[AtendimentosAgrupados]([Id]) ON DELETE NO ACTION
+);
 GO
 
 -- ============================================================
 -- Tabela: RevisoesHumanas
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'RevisoesHumanas')
-BEGIN
-    CREATE TABLE RevisoesHumanas (
-        Id                  INT IDENTITY(1,1) NOT NULL,
-        DivergenciaId       INT               NOT NULL,
-        Decisao             INT               NOT NULL,
-            -- 2=Aceita | 3=Rejeitada | 4=CorrecaoSolicitada
-        NomeAuditor         NVARCHAR(200)     NOT NULL,
-        Justificativa       NVARCHAR(1000)    NULL,
-        ObservacaoCorrecao  NVARCHAR(1000)    NULL,
-        DataRevisao         DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataCriacao         DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        DataAtualizacao     DATETIME2         NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT PK_RevisoesHumanas PRIMARY KEY (Id),
-        CONSTRAINT FK_Revisoes_Divergencias FOREIGN KEY (DivergenciaId)
-            REFERENCES DivergenciasAuditoria(Id) ON DELETE CASCADE,
-        CONSTRAINT UQ_Revisoes_Divergencia UNIQUE (DivergenciaId)
-    );
-    PRINT 'Tabela RevisoesHumanas criada.';
-END
-ELSE PRINT 'Tabela RevisoesHumanas ja existe.';
+CREATE TABLE [dbo].[RevisoesHumanas]
+(
+    [Id]                        INT IDENTITY(1,1) NOT NULL,
+    [DivergenciaId]             INT NOT NULL,
+    [Decisao]                   INT NOT NULL,
+    [NomeAuditor]               NVARCHAR(200) NOT NULL,
+    [Justificativa]             NVARCHAR(2000) NULL,
+    [ObservacaoCorrecao]        NVARCHAR(2000) NULL,
+    [DataRevisao]               DATETIME2 NOT NULL CONSTRAINT [DF_RevisoesHumanas_DataRevisao] DEFAULT GETUTCDATE(),
+
+    [DataCriacao]               DATETIME2 NULL CONSTRAINT [DF_RevisoesHumanas_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]           DATETIME2 NULL CONSTRAINT [DF_RevisoesHumanas_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_RevisoesHumanas] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_RevisoesHumanas_DivergenciasAuditoria]
+        FOREIGN KEY ([DivergenciaId]) REFERENCES [dbo].[DivergenciasAuditoria]([Id]) ON DELETE CASCADE,
+    CONSTRAINT [UQ_RevisoesHumanas_DivergenciaId] UNIQUE ([DivergenciaId])
+);
 GO
 
-PRINT '==========================================================';
-PRINT '01_CreateTables.sql concluido com sucesso!';
-PRINT '==========================================================';
+-- ============================================================
+-- Índices
+-- ============================================================
+
+CREATE INDEX [IX_Lotes_Status] ON [dbo].[Lotes]([Status]);
+CREATE INDEX [IX_Lotes_DataCriacao] ON [dbo].[Lotes]([DataCriacao] DESC);
+
+CREATE INDEX [IX_AtendimentosAgrupados_LoteId] ON [dbo].[AtendimentosAgrupados]([LoteId]);
+CREATE INDEX [IX_AtendimentosAgrupados_NumeroGuia] ON [dbo].[AtendimentosAgrupados]([NumeroGuia]);
+CREATE INDEX [IX_AtendimentosAgrupados_NumeroPedido] ON [dbo].[AtendimentosAgrupados]([NumeroPedido]);
+CREATE INDEX [IX_AtendimentosAgrupados_DataAtendimento] ON [dbo].[AtendimentosAgrupados]([DataAtendimento]);
+
+CREATE INDEX [IX_Documentos_LoteId] ON [dbo].[Documentos]([LoteId]);
+CREATE INDEX [IX_Documentos_Status] ON [dbo].[Documentos]([Status]);
+CREATE INDEX [IX_Documentos_TipoDocumento] ON [dbo].[Documentos]([TipoDocumento]);
+CREATE INDEX [IX_Documentos_ExtendRunId] ON [dbo].[Documentos]([ExtendRunId]);
+CREATE INDEX [IX_Documentos_ExtendFileId] ON [dbo].[Documentos]([ExtendFileId]);
+CREATE INDEX [IX_Documentos_AtendimentoAgrupadoId] ON [dbo].[Documentos]([AtendimentoAgrupadoId]);
+
+CREATE INDEX [IX_DivergenciasAuditoria_DocumentoId] ON [dbo].[DivergenciasAuditoria]([DocumentoId]);
+CREATE INDEX [IX_DivergenciasAuditoria_AtendimentoAgrupadoId] ON [dbo].[DivergenciasAuditoria]([AtendimentoAgrupadoId]);
+CREATE INDEX [IX_DivergenciasAuditoria_Status] ON [dbo].[DivergenciasAuditoria]([Status]);
+CREATE INDEX [IX_DivergenciasAuditoria_Severidade] ON [dbo].[DivergenciasAuditoria]([Severidade]);
+CREATE INDEX [IX_DivergenciasAuditoria_Tipo] ON [dbo].[DivergenciasAuditoria]([Tipo]);
+
+CREATE INDEX [IX_RevisoesHumanas_DivergenciaId] ON [dbo].[RevisoesHumanas]([DivergenciaId]);
+CREATE INDEX [IX_RevisoesHumanas_NomeAuditor] ON [dbo].[RevisoesHumanas]([NomeAuditor]);
+CREATE INDEX [IX_RevisoesHumanas_DataRevisao] ON [dbo].[RevisoesHumanas]([DataRevisao] DESC);
 GO

@@ -33,8 +33,11 @@ public class WebhookController : ControllerBase
 
         try
         {
-            using var reader = new StreamReader(Request.Body);
+            Request.EnableBuffering();
+
+            using var reader = new StreamReader(Request.Body, leaveOpen: true);
             payloadJson = await reader.ReadToEndAsync();
+            Request.Body.Position = 0;
         }
         catch (Exception ex)
         {
@@ -48,7 +51,12 @@ public class WebhookController : ControllerBase
             return BadRequest("Payload vazio.");
         }
 
-        _logger.LogInformation("Webhook Extend: payload recebido ({Tamanho} bytes)", payloadJson.Length);
+        var preview = payloadJson.Length > 1000 ? payloadJson[..1000] : payloadJson;
+
+        _logger.LogInformation("Webhook Extend: ContentType={ContentType} Length={Length}",
+            Request.ContentType, Request.ContentLength);
+
+        _logger.LogInformation("Webhook Extend RAW: " + preview);
 
         try
         {
@@ -58,7 +66,6 @@ public class WebhookController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Webhook Extend: erro ao processar payload");
-            // Retorna 200 para evitar que a Extend reenvie o webhook em loop
             return Ok(new { message = "Erro interno ao processar webhook. Verificar logs." });
         }
     }

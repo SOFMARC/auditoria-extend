@@ -185,7 +185,7 @@ public class ImportacaoService : IImportacaoService
         var nome = nomeArquivo.ToLowerInvariant();
         if (nome.Contains("guia") || nome.Contains("sadt") || nome.Contains("sp_") || nome.Contains("spsa"))
             return TipoDocumento.GuiaSPSADT;
-        if (nome.Contains("pedido") || nome.Contains("solicitacao") || nome.Contains("prescricao"))
+        if (nome.Contains("pedido") || nome.Contains("solicitacao") || nome.Contains("prescricao") || nome.Contains("anexo"))
             return TipoDocumento.PedidoMedico;
         if (nome.Contains("laudo"))
             return TipoDocumento.Laudo;

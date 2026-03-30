@@ -77,7 +77,7 @@ public class LoteService : ILoteService
         lote.MensagemErro = mensagemErro;
         lote.DataAtualizacao = DateTime.UtcNow;
         if (status == StatusLote.Processando)
-            lote.DataInicioProcesamento = DateTime.UtcNow;
+            lote.DataInicioProcessamento = DateTime.UtcNow;
         if (status is StatusLote.Concluido or StatusLote.Erro)
             lote.DataFimProcessamento = DateTime.UtcNow;
         await _repo.UpdateAsync(lote);

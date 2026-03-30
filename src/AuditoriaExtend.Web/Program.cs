@@ -1,24 +1,48 @@
+using AuditoriaExtend.Application.Services;
 using Serilog;
+using Serilog.Debugging;
 using AuditoriaExtend.Infrastructure;
 using AuditoriaExtend.Application;
-using AuditoriaExtend.Application.Services;
-
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .WriteTo.Console()
-    .WriteTo.File("logs/auditoria-.txt", rollingInterval: RollingInterval.Day)
-    .CreateLogger();
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
+    var logDir = @"C:\LogsAppWeb\auditoria";
+    Directory.CreateDirectory(logDir);
+
+    var internalSerilogErrors = Path.Combine(logDir, "serilog-selflog.txt");
+    SelfLog.Enable(msg =>
+    {
+        try
+        {
+            File.AppendAllText(internalSerilogErrors, msg + Environment.NewLine);
+        }
+        catch
+        {
+            // evita quebrar startup por causa do próprio selflog
+        }
+    });
+
+    Log.Logger = new LoggerConfiguration()
+        .MinimumLevel.Information()
+        .WriteTo.Console()
+        .WriteTo.File(
+            path: Path.Combine(logDir, "log-.txt"),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 15,
+            shared: true,
+            outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message}{NewLine}{Exception}")
+        .CreateLogger();
+
     builder.Host.UseSerilog();
+
+    Log.Information("Aplicação iniciada - teste de arquivo");
 
     builder.Services.AddControllersWithViews();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddApplication();
 
-    // Configuração das regras de auditoria (modo Assistido por padrão)
     builder.Services.Configure<AuditoriaOptions>(
         builder.Configuration.GetSection(AuditoriaOptions.SectionName));
 
@@ -35,17 +59,12 @@ try
     app.UseRouting();
     app.UseAuthorization();
 
-    // Rota padrão MVC
     app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}");
 
-    // Rota da API de webhook (recebe callbacks da Extend)
-    app.MapControllerRoute(
-        name: "api",
-        pattern: "api/{controller}/{action=Index}/{id?}");
-
     Log.Information("Aplicação iniciada com sucesso");
+
     await app.RunAsync();
 }
 catch (Exception ex)
@@ -57,5 +76,4 @@ finally
     Log.CloseAndFlush();
 }
 
-// Expõe a classe Program para os testes de integração (WebApplicationFactory)
 public partial class Program { }
