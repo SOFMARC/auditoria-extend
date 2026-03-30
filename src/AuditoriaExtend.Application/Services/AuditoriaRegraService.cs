@@ -29,18 +29,34 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     private const int LimiarReviewScoreBaixo = 3;
     private const int LimiarReviewScoreAlerta = 4;
 
-    // Campos críticos que exigem revisão humana obrigatória
+    // Campos criticos que exigem revisao humana obrigatoria
+    // Inclui tanto camelCase (formato interno normalizado) quanto snake_case (formato bruto da Extend)
     private static readonly HashSet<string> CamposCriticos = new(StringComparer.OrdinalIgnoreCase)
     {
+        // camelCase (formato normalizado pelo WebhookProcessorService)
         "nomePaciente", "crm", "crmMedico", "numeroGuia", "numeroPedido",
         "dataSolicitacao", "dataAtendimento", "codigoProcedimento", "procedimento",
-        "quantidadeSolicitada", "quantidadeRealizada", "totalGeral"
+        "quantidadeSolicitada", "quantidadeRealizada", "totalGeral",
+        "numeroCarteira", "itensSolicitados", "itensRealizados",
+        // snake_case (formato bruto da Extend - armazenado em paralelo pelo NormalizarCampos)
+        "nome_paciente", "nome_beneficiario", "crm_medico",
+        "numero_guia", "numero_guia_prestador", "numero_pedido",
+        "data_solicitacao", "data_atendimento", "data_realizacao",
+        "codigo_procedimento", "quantidade_solicitada", "quantidade_realizada",
+        "total_geral", "numero_carteira", "itens_solicitados", "itens_realizados"
     };
 
     // Campos importantes que geram alerta
+    // Inclui tanto camelCase quanto snake_case
     private static readonly HashSet<string> CamposImportantes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "nomeMedico", "especialidade", "cid", "indicacaoClinica", "valorUnitario", "valorTotal"
+        // camelCase
+        "nomeMedico", "especialidade", "cid", "indicacaoClinica", "valorUnitario", "valorTotal",
+        "codigoCnes", "totalOpme", "totalProcedimentos",
+        // snake_case
+        "nome_medico", "nome_solicitante", "especialidade", "cid",
+        "indicacao_clinica", "diagnostico", "valor_unitario", "valor_total",
+        "codigo_cnes", "cnes", "total_opme", "total_procedimentos"
     };
 
     public AuditoriaRegraService(
@@ -205,12 +221,13 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         JObject? fields = null;
         try { fields = JObject.Parse(doc.DadosExtraidos); } catch { return 0; }
 
-        var itensSolicitados = ExtrairListaItens(fields, "itensSolicitados");
-        var itensRealizados = ExtrairListaItens(fields, "itensRealizados");
-        var totalProcedimentos = fields["totalProcedimentos"]?["value"]?.Value<double?>();
-        var totalGeral = fields["totalGeral"]?["value"]?.Value<double?>();
-        var quantsSolicitadas = ExtrairQuantidades(fields, "quantidadesSolicitadas");
-        var quantsRealizadas = ExtrairQuantidades(fields, "quantidadesRealizadas");
+        // Suporta tanto camelCase (normalizado) quanto snake_case (bruto da Extend)
+        var itensSolicitados = ExtrairListaItensMulti(fields, "itensSolicitados", "itens_solicitados", "procedimentos");
+        var itensRealizados  = ExtrairListaItensMulti(fields, "itensRealizados",  "itens_realizados");
+        var totalProcedimentos = ExtrairValorNumerico(fields, "totalProcedimentos", "total_procedimentos");
+        var totalGeral         = ExtrairValorNumerico(fields, "totalGeral", "total_geral");
+        var quantsSolicitadas = ExtrairQuantidadesMulti(fields, "quantidadesSolicitadas", "quantidades_solicitadas");
+        var quantsRealizadas  = ExtrairQuantidadesMulti(fields, "quantidadesRealizadas",  "quantidades_realizadas");
 
         // A1: Item solicitado e não realizado
         foreach (var item in itensSolicitados)
@@ -297,10 +314,10 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         JObject? fieldsPedido = null;
         try { if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos)) fieldsPedido = JObject.Parse(pedido.DadosExtraidos); } catch { }
 
-        var itensPedido = fieldsPedido != null ? ExtrairListaItens(fieldsPedido, "itensSolicitados") : new List<string>();
-        var crmPedido = fieldsPedido?["crm"]?["value"]?.ToString();
-        var pacientePedido = fieldsPedido?["nomePaciente"]?["value"]?.ToString();
-        var dataPedido = fieldsPedido?["dataSolicitacao"]?["value"]?.ToString();
+        var itensPedido = fieldsPedido != null ? ExtrairListaItensMulti(fieldsPedido, "itensSolicitados", "itens_solicitados", "procedimentos") : new List<string>();
+        var crmPedido      = ExtrairCampoMulti(fieldsPedido, "crm", "crm_medico");
+        var pacientePedido = ExtrairCampoMulti(fieldsPedido, "nomePaciente", "nome_paciente", "nome_beneficiario");
+        var dataPedido     = ExtrairCampoMulti(fieldsPedido, "dataSolicitacao", "data_solicitacao");
         var itensGuias = new List<string>();
 
         foreach (var guia in guias)
@@ -308,10 +325,10 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             JObject? fieldsGuia = null;
             try { if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos)) fieldsGuia = JObject.Parse(guia.DadosExtraidos); } catch { }
             if (fieldsGuia != null)
-                itensGuias.AddRange(ExtrairListaItens(fieldsGuia, "itensRealizados"));
+                itensGuias.AddRange(ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados"));
 
             // B3: Item realizado sem autorização
-            var realizadosGuia = fieldsGuia != null ? ExtrairListaItens(fieldsGuia, "itensRealizados") : new List<string>();
+            var realizadosGuia = fieldsGuia != null ? ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados") : new List<string>();
             foreach (var item in realizadosGuia)
             {
                 if (!itensPedido.Any(p => NormalizarCodigo(p) == NormalizarCodigo(item)))
@@ -325,7 +342,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             }
 
             // B6: CRM divergente
-            var crmGuia = fieldsGuia?["crm"]?["value"]?.ToString();
+            var crmGuia = ExtrairCampoMulti(fieldsGuia, "crm", "crm_medico");
             if (!string.IsNullOrWhiteSpace(crmPedido) && !string.IsNullOrWhiteSpace(crmGuia)
                 && NormalizarCodigo(crmPedido) != NormalizarCodigo(crmGuia))
             {
@@ -338,7 +355,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             }
 
             // B7: Paciente divergente
-            var pacienteGuia = fieldsGuia?["nomePaciente"]?["value"]?.ToString();
+            var pacienteGuia = ExtrairCampoMulti(fieldsGuia, "nomePaciente", "nome_paciente", "nome_beneficiario");
             if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
                 && !NomesSimiliares(pacientePedido, pacienteGuia))
             {
@@ -351,7 +368,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             }
 
             // B8: Data suspeita (guia anterior ao pedido)
-            var dataGuia = fieldsGuia?["dataAtendimento"]?["value"]?.ToString();
+            var dataGuia = ExtrairCampoMulti(fieldsGuia, "dataAtendimento", "data_atendimento", "data_realizacao");
             if (!string.IsNullOrWhiteSpace(dataPedido) && !string.IsNullOrWhiteSpace(dataGuia)
                 && DateTime.TryParse(dataPedido, out var dtPedido)
                 && DateTime.TryParse(dataGuia, out var dtGuia)
@@ -535,6 +552,77 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 if (double.TryParse(prop.Value.ToString(), out var val))
                     result[prop.Name] = val;
         return result;
+    }
+
+    /// <summary>
+    /// Extrai lista de itens tentando multiplos nomes de campo (camelCase e snake_case).
+    /// Retorna a primeira lista nao-vazia encontrada.
+    /// </summary>
+    private static List<string> ExtrairListaItensMulti(JObject fields, params string[] nomesCampo)
+    {
+        foreach (var nome in nomesCampo)
+        {
+            var lista = ExtrairListaItens(fields, nome);
+            if (lista.Count > 0) return lista;
+        }
+        return new List<string>();
+    }
+
+    /// <summary>
+    /// Extrai dicionario de quantidades tentando multiplos nomes de campo.
+    /// </summary>
+    private static Dictionary<string, double> ExtrairQuantidadesMulti(JObject fields, params string[] nomesCampo)
+    {
+        foreach (var nome in nomesCampo)
+        {
+            var dict = ExtrairQuantidades(fields, nome);
+            if (dict.Count > 0) return dict;
+        }
+        return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Extrai valor numerico tentando multiplos nomes de campo.
+    /// </summary>
+    private static double? ExtrairValorNumerico(JObject fields, params string[] nomesCampo)
+    {
+        foreach (var nome in nomesCampo)
+        {
+            var val = fields[nome]?["value"]?.Value<double?>();
+            if (val.HasValue) return val;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Extrai valor de texto de um campo, tentando multiplos nomes (camelCase e snake_case).
+    /// Suporta tanto o formato normalizado { "value": "..." } quanto valor direto.
+    /// </summary>
+    private static string? ExtrairCampoMulti(JObject? fields, params string[] nomesCampo)
+    {
+        if (fields == null) return null;
+        foreach (var nome in nomesCampo)
+        {
+            var token = fields[nome];
+            if (token == null) continue;
+            if (token is JObject obj)
+            {
+                var val = obj["value"];
+                if (val != null && val.Type != JTokenType.Null
+                    && val.Type != JTokenType.Array && val.Type != JTokenType.Object)
+                {
+                    var str = val.ToString();
+                    if (!string.IsNullOrWhiteSpace(str)) return str;
+                }
+            }
+            else if (token.Type != JTokenType.Null
+                     && token.Type != JTokenType.Array && token.Type != JTokenType.Object)
+            {
+                var str = token.ToString();
+                if (!string.IsNullOrWhiteSpace(str)) return str;
+            }
+        }
+        return null;
     }
 
     private static string NormalizarCodigo(string s) =>

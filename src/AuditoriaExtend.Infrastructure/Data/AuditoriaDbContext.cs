@@ -23,6 +23,13 @@ public class AuditoriaDbContext : DbContext
             e.Property(l => l.NomeArquivo).HasMaxLength(500).IsRequired();
             e.Property(l => l.CaminhoArquivo).HasMaxLength(1000);
             e.Property(l => l.MensagemErro).HasMaxLength(2000);
+            // Mapeamento explicito: propriedades C# -> colunas SQL
+            e.Property(l => l.QuantidadeDocumentos).HasColumnName("TotalDocumentos");
+            e.Property(l => l.QuantidadeEnviadosExtend).HasColumnName("EnviadosExtend");
+            e.Property(l => l.QuantidadeProcessados).HasColumnName("DocumentosProcessados");
+            e.Property(l => l.QuantidadeDivergencias).HasColumnName("TotalDivergencias");
+            e.Property(l => l.QuantidadeRevisaoHumana).HasColumnName("TotalRevisaoHumana");
+            e.Property(l => l.DataInicioProcesamento).HasColumnName("DataInicioProcessamento");
             e.HasMany(l => l.Documentos).WithOne(d => d.Lote).HasForeignKey(d => d.LoteId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -32,14 +39,21 @@ public class AuditoriaDbContext : DbContext
             e.Property(d => d.NomeArquivo).HasMaxLength(500).IsRequired();
             e.Property(d => d.CaminhoArquivo).HasMaxLength(1000);
             e.Property(d => d.MensagemErro).HasMaxLength(2000);
+            e.Property(d => d.ExtendFileId).HasMaxLength(200);
+            e.Property(d => d.ExtendRunId).HasMaxLength(200);
+            e.Property(d => d.ExtractorId).HasMaxLength(200);
+            // DadosExtraidos = JSON normalizado do webhook (mapeado para coluna DadosExtraidos)
+            // ConfiancaOcr ja tem o nome correto apos script de migracao
             e.HasMany(d => d.Divergencias).WithOne(div => div.Documento).HasForeignKey(div => div.DocumentoId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AtendimentoAgrupado>(e =>
         {
             e.HasKey(a => a.Id);
+            e.Property(a => a.NumeroCarteira).HasMaxLength(50);
             e.Property(a => a.NomePaciente).HasMaxLength(200);
             e.Property(a => a.NomeMedico).HasMaxLength(200);
+            e.Property(a => a.CrmMedico).HasMaxLength(50);
             e.Property(a => a.NumeroGuia).HasMaxLength(50);
             e.Property(a => a.NumeroPedido).HasMaxLength(50);
         });
