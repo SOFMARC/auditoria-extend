@@ -1,9 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<!-- https://go.microsoft.com/fwlink/?LinkID=208121. -->
-<Project>
-  <PropertyGroup>
-    <_PublishTargetUrl>E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\auditoria-extend\src\AuditoriaExtend.Web\bin\Release\net8.0\publish\</_PublishTargetUrl>
-    <History>True|2026-03-25T19:59:48.8916568Z||;True|2026-03-25T16:46:24.6777257-03:00||;True|2026-03-25T16:19:42.7353020-03:00||;True|2026-03-25T12:59:28.6233005-03:00||;True|2026-03-25T12:09:45.1885459-03:00||;True|2026-03-24T17:46:18.5034620-03:00||;True|2026-03-24T17:43:32.9697673-03:00||;True|2026-03-24T17:31:50.1130755-03:00||;True|2026-03-24T14:24:05.3443562-03:00||;</History>
-    <LastFailureDetails />
-  </PropertyGroup>
-</Project>
