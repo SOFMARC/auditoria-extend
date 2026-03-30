@@ -183,15 +183,11 @@ public class ImportacaoService : IImportacaoService
     private static TipoDocumento ClassificarTipoPorNome(string nomeArquivo)
     {
         var nome = nomeArquivo.ToLowerInvariant();
-        if (nome.Contains("guia") || nome.Contains("sadt") || nome.Contains("sp_") || nome.Contains("spsa"))
-            return TipoDocumento.GuiaSPSADT;
-        if (nome.Contains("pedido") || nome.Contains("solicitacao") || nome.Contains("prescricao"))
+  
+        if (nome.Contains("Anexo"))
             return TipoDocumento.PedidoMedico;
-        if (nome.Contains("laudo"))
-            return TipoDocumento.Laudo;
-        if (nome.Contains("receita"))
-            return TipoDocumento.Receita;
-        return TipoDocumento.Desconhecido;
+      
+        return TipoDocumento.GuiaSPSADT;
     }
 
     private string SelecionarExtractor(TipoDocumento tipo) => tipo switch

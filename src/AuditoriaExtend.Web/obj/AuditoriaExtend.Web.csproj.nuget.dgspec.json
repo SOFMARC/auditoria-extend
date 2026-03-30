@@ -1,0 +1,360 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Web\\AuditoriaExtend.Web.csproj": {}
+  },
+  "projects": {
+    "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj",
+        "projectName": "AuditoriaExtend.Application",
+        "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj",
+        "packagesPath": "C:\\Users\\in019042\\.nuget\\packages\\",
+        "outputPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
+          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\in019042\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj": {
+                "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "noWarn": [
+            "NU1903"
+          ],
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "AutoMapper": {
+              "target": "Package",
+              "version": "[12.0.1, )"
+            },
+            "AutoMapper.Extensions.Microsoft.DependencyInjection": {
+              "target": "Package",
+              "version": "[12.0.1, )"
+            },
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Options": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj",
+        "projectName": "AuditoriaExtend.Domain",
+        "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj",
+        "packagesPath": "C:\\Users\\in019042\\.nuget\\packages\\",
+        "outputPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
+          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\in019042\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\AuditoriaExtend.Infrastructure.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\AuditoriaExtend.Infrastructure.csproj",
+        "projectName": "AuditoriaExtend.Infrastructure",
+        "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\AuditoriaExtend.Infrastructure.csproj",
+        "packagesPath": "C:\\Users\\in019042\\.nuget\\packages\\",
+        "outputPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
+          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\in019042\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj": {
+                "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj"
+              },
+              "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj": {
+                "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Domain\\AuditoriaExtend.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.EntityFrameworkCore.SqlServer": {
+              "target": "Package",
+              "version": "[8.0.3, )"
+            },
+            "Microsoft.EntityFrameworkCore.Tools": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.3, )"
+            },
+            "Microsoft.Extensions.Http": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "Serilog": {
+              "target": "Package",
+              "version": "[3.1.1, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Web\\AuditoriaExtend.Web.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Web\\AuditoriaExtend.Web.csproj",
+        "projectName": "AuditoriaExtend.Web",
+        "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Web\\AuditoriaExtend.Web.csproj",
+        "packagesPath": "C:\\Users\\in019042\\.nuget\\packages\\",
+        "outputPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Web\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
+          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\in019042\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj": {
+                "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Application\\AuditoriaExtend.Application.csproj"
+              },
+              "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\AuditoriaExtend.Infrastructure.csproj": {
+                "projectPath": "E:\\Thiago\\teste-estudo\\Leitura de arquivos\\Nova pasta\\auditoria-extend\\src\\AuditoriaExtend.Infrastructure\\AuditoriaExtend.Infrastructure.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Serilog.AspNetCore": {
+              "target": "Package",
+              "version": "[8.0.1, )"
+            },
+            "Serilog.Sinks.Console": {
+              "target": "Package",
+              "version": "[5.0.1, )"
+            },
+            "Serilog.Sinks.File": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

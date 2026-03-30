@@ -31,14 +31,35 @@ public class ExtendClient : IExtendClient
         _http.DefaultRequestHeaders.Add("x-extend-api-version", ApiVersion);
     }
 
+    private static string ObterContentType(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".tif" => "image/tiff",
+            ".tiff" => "image/tiff",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".bmp" => "image/bmp",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            _ => "application/octet-stream"
+        };
+    }
+
     /// <inheritdoc/>
     public async Task<string> UploadFileAsync(Stream fileStream, string fileName, CancellationToken ct = default)
     {
         _logger.LogInformation("Extend: enviando arquivo '{FileName}' para upload", fileName);
 
         using var content = new MultipartFormDataContent();
-        using var streamContent = new StreamContent(fileStream);
-        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+        using var streamContent = new StreamContent(fileStream);        
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ObterContentType(fileName));
+
         content.Add(streamContent, "file", fileName);
 
         var response = await _http.PostAsync("files/upload", content, ct);
@@ -66,7 +87,11 @@ public class ExtendClient : IExtendClient
         _logger.LogInformation("Extend: iniciando extração. FileId={FileId} ExtractorId={ExtractorId}",
             fileId, extractorId);
 
-        var payload = new { fileId, extractorId };
+        var payload = new
+        {
+            extractor = new{id = extractorId}, file = new{id = fileId}
+        };
+
         var json = JsonConvert.SerializeObject(payload);
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 

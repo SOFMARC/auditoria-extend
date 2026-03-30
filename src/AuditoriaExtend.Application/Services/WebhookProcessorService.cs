@@ -40,19 +40,27 @@ public class WebhookProcessorService : IWebhookProcessorService
 
     public async Task ProcessarRetornoExtendAsync(string payloadJson)
     {
-        JObject payload;
+        _logger.LogInformation("Webhook Processor: payload bruto recebido");
+
+        var payload = JObject.Parse(payloadJson);
         try
         {
             payload = JObject.Parse(payloadJson);
+            _logger.LogInformation("Webhook : payloadJson={payload}", payload);
+
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Webhook: payload JSON inválido");
             return;
         }
+        var eventType = payload["eventType"]?.ToString();
+        var eventId = payload["eventId"]?.ToString();
+        var runId = payload["payload"]?["id"]?.ToString();
+        var status = payload["payload"]?["status"]?.ToString();
 
-        var eventType = payload["event"]?.ToString();
-        _logger.LogInformation("Webhook recebido: event={Event}", eventType);
+        _logger.LogInformation("Webhook Processor: eventType={EventType} eventId={EventId} runId={RunId} status={Status}",
+            eventType, eventId, runId, status);
 
         // Só processa o evento de extração concluída
         if (eventType != "extract_run.processed" && eventType != "extract_run.failed")
@@ -62,8 +70,6 @@ public class WebhookProcessorService : IWebhookProcessorService
         }
 
         var data = payload["data"];
-        var runId = data?["id"]?.ToString();
-        var status = data?["status"]?.ToString();
 
         if (string.IsNullOrEmpty(runId))
         {
@@ -104,12 +110,17 @@ public class WebhookProcessorService : IWebhookProcessorService
         // Persiste os dados extraídos
         await _documentoService.SalvarDadosExtracaoAsync(
             documento.Id, fieldsJson, ocrConfidence, extractorId, reviewAgentScore);
+        _logger.LogInformation("SalvarDadosExtracaoAsync");
 
         // Executa todas as regras de auditoria (A, B, C, D, E, F, G)
         await _auditoriaService.AuditarDocumentoAsync(documento.Id);
+        _logger.LogInformation("AuditarDocumentoAsync");
 
         await _loteService.IncrementarProcessadosAsync(documento.LoteId);
+        _logger.LogInformation("IncrementarProcessadosAsync");
+
         await VerificarConclusaoLoteAsync(documento.LoteId);
+        _logger.LogInformation("VerificarConclusaoLoteAsync");
     }
 
     /// <summary>

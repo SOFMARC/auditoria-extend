@@ -17,7 +17,7 @@ public class Lote : EntityBase
     public int QuantidadeRevisaoHumana { get; set; }
 
     public string? MensagemErro { get; set; }
-    public DateTime? DataInicioProcesamento { get; set; }
+    public DateTime? DataInicioProcessamento { get; set; }
     public DateTime? DataFimProcessamento { get; set; }
 
     // Navigation
