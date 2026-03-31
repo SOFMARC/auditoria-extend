@@ -84,6 +84,17 @@ public class LoteService : ILoteService
         await _repo.SaveChangesAsync();
     }
 
+    /// <summary>Define o total de documentos encontrados no ZIP ao iniciar o processamento do lote.</summary>
+    public async Task DefinirQuantidadeDocumentosAsync(int id, int quantidade)
+    {
+        var lote = await _repo.GetByIdAsync(id);
+        if (lote == null) return;
+        lote.QuantidadeDocumentos = quantidade;
+        lote.DataAtualizacao = DateTime.UtcNow;
+        await _repo.UpdateAsync(lote);
+        await _repo.SaveChangesAsync();
+    }
+
     public async Task IncrementarProcessadosAsync(int id)
     {
         var lote = await _repo.GetByIdAsync(id);

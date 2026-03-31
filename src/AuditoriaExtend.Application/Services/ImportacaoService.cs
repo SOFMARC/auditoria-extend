@@ -105,6 +105,10 @@ public class ImportacaoService : IImportacaoService
                 return;
             }
 
+            // Registra o total de documentos encontrados no ZIP antes de enviar qualquer um.
+            // Isso garante que QuantidadeDocumentos seja correto desde o início do processamento.
+            await _loteService.DefinirQuantidadeDocumentosAsync(loteId, arquivos.Count);
+
             _logger.LogInformation("Lote {LoteId}: {Total} arquivo(s) encontrado(s) para envio à Extend.", loteId, arquivos.Count);
 
             int enviados = 0;

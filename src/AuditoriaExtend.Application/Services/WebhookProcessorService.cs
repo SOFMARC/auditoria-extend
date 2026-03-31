@@ -153,6 +153,9 @@ public class WebhookProcessorService : IWebhookProcessorService
             var erro = data?["error"]?.ToString() ?? "Erro desconhecido na extracao Extend";
             _logger.LogError("Webhook Extend: extracao falhou. RunId={RunId} Erro={Erro}", runId, erro);
             await _documentoService.AtualizarStatusAsync(documento.Id, StatusDocumento.Erro, erro);
+            // Incrementa o contador mesmo em caso de falha para que VerificarConclusaoLoteAsync
+            // possa detectar que todos os documentos foram respondidos pela Extend.
+            await _loteService.IncrementarProcessadosAsync(documento.LoteId);
             await VerificarConclusaoLoteAsync(documento.LoteId);
             return;
         }
@@ -368,25 +371,45 @@ public class WebhookProcessorService : IWebhookProcessorService
         var lote = await _repoLote.GetByIdAsync(loteId);
         if (lote == null) return;
 
+        // Guarda de segurança: só verifica conclusão se o lote já está em AguardandoExtend.
+        // Isso evita encerrar o lote antes de todos os arquivos terem sido enviados.
+        if (lote.Status != StatusLote.AguardandoExtend)
+        {
+            _logger.LogDebug(
+                "Lote {LoteId}: status={Status}, aguardando transição para AguardandoExtend antes de verificar conclusão.",
+                loteId, lote.Status);
+            return;
+        }
+
+        // QuantidadeDocumentos é definido em ProcessarLoteAsync antes de qualquer envio.
+        // QuantidadeProcessados é incrementado a cada webhook recebido (Processado ou Erro).
+        // O lote só conclui quando todos os documentos tiverem sido respondidos pela Extend.
         var docs = await _repoDoc.GetAllAsync();
         var docsLote = docs.Where(d => d.LoteId == loteId).ToList();
 
-        var totalPendentes = docsLote.Count(d =>
+        var totalDocumentos   = lote.QuantidadeDocumentos > 0 ? lote.QuantidadeDocumentos : docsLote.Count;
+        var totalFinalizados  = docsLote.Count(d =>
+            d.Status == StatusDocumento.Processado ||
+            d.Status == StatusDocumento.Erro);
+        var totalAguardando   = docsLote.Count(d =>
             d.Status == StatusDocumento.AguardandoExtend ||
             d.Status == StatusDocumento.EnviadoExtend    ||
             d.Status == StatusDocumento.Pendente);
 
-        if (totalPendentes > 0)
+        _logger.LogInformation(
+            "Lote {LoteId}: {Finalizados}/{Total} documentos finalizados, {Aguardando} ainda aguardando.",
+            loteId, totalFinalizados, totalDocumentos, totalAguardando);
+
+        // Só conclui quando não houver mais nenhum documento aguardando resposta da Extend
+        // E o total de finalizados bater com o total esperado de documentos do lote.
+        if (totalAguardando > 0 || totalFinalizados < totalDocumentos)
         {
-            _logger.LogDebug(
-                "Lote {LoteId}: ainda aguardando {Pendentes} documento(s) da Extend",
-                loteId, totalPendentes);
             return;
         }
 
         _logger.LogInformation(
-            "Lote {LoteId}: todos os documentos processados. Executando regras cross-documento (E, F, G).",
-            loteId);
+            "Lote {LoteId}: todos os {Total} documentos finalizados. Executando regras cross-documento (E, F, G).",
+            loteId, totalDocumentos);
 
         await _auditoriaService.DetectarDuplicidadesAsync(loteId);
         await _auditoriaService.DetectarAusenciaDocumentalAsync(loteId);
