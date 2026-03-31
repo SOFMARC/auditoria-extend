@@ -12,6 +12,7 @@
     };
     var temDados = !string.IsNullOrWhiteSpace(Model.DadosExtaidosDocumento)
                    && Model.DadosExtaidosDocumento != "{}";
+    var temArquivo = !string.IsNullOrWhiteSpace(Model.UrlDocumentoOriginal);
 }
 
 <div class="row mb-3">
@@ -28,7 +29,7 @@
 
 <div class="row g-4">
 
-    @* ── Coluna esquerda: detalhes da divergência + dados do documento ── *@
+    @* ── Coluna esquerda: detalhes + documento + dados extraídos ── *@
     <div class="col-lg-7">
 
         @* Detalhes da divergência *@
@@ -41,7 +42,19 @@
             </div>
             <div class="card-body">
                 <table class="table table-sm table-borderless mb-0">
-                    <tr><th class="text-muted" style="width:35%">Documento</th><td><strong>@Model.NomeArquivoDocumento</strong></td></tr>
+                    <tr><th class="text-muted" style="width:35%">Documento</th>
+                        <td>
+                            <strong>@Model.NomeArquivoDocumento</strong>
+                            @if (temArquivo)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-2"
+                                        onclick="abrirDocumento('@Model.UrlDocumentoOriginal', '@Model.NomeArquivoDocumento')"
+                                        title="Visualizar documento original">
+                                    <i class="fas fa-eye me-1"></i>Ver Documento
+                                </button>
+                            }
+                        </td>
+                    </tr>
                     @if (!string.IsNullOrEmpty(Model.TipoDocumentoLabel))
                     {
                         <tr><th class="text-muted">Tipo do Doc.</th><td><span class="badge bg-secondary">@Model.TipoDocumentoLabel</span></td></tr>
@@ -92,13 +105,21 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-database me-2 text-info"></i>Dados Importados do Documento</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarDados()">
-                        <i class="fas fa-copy me-1"></i>Copiar JSON
-                    </button>
+                    <div class="d-flex gap-2">
+                        @if (temArquivo)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="abrirDocumento('@Model.UrlDocumentoOriginal', '@Model.NomeArquivoDocumento')">
+                                <i class="fas fa-file-image me-1"></i>Ver Arquivo Original
+                            </button>
+                        }
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarDados()">
+                            <i class="fas fa-copy me-1"></i>Copiar JSON
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     @{
-                        // Tenta formatar o JSON para exibição em tabela de campos
                         Newtonsoft.Json.Linq.JObject? dadosObj = null;
                         try { dadosObj = Newtonsoft.Json.Linq.JObject.Parse(Model.DadosExtaidosDocumento!); } catch { }
                     }
@@ -184,6 +205,13 @@
         {
             <div class="alert alert-secondary">
                 <i class="fas fa-info-circle me-2"></i>Dados extraídos não disponíveis para este documento.
+                @if (temArquivo)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2"
+                            onclick="abrirDocumento('@Model.UrlDocumentoOriginal', '@Model.NomeArquivoDocumento')">
+                        <i class="fas fa-eye me-1"></i>Ver Arquivo Original
+                    </button>
+                }
             </div>
         }
     </div>
@@ -263,8 +291,78 @@
     </div>
 </div>
 
+@* ── Modal: visualização do documento original (TIFF/PDF/imagem) ── *@
+<div class="modal fade" id="modalDocumento" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:90vw">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-image me-2"></i><span id="modalDocNome"></span></h5>
+                <div class="d-flex gap-2 align-items-center">
+                    <a id="modalDocLink" href="#" target="_blank" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt me-1"></i>Abrir em nova aba
+                    </a>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 text-center bg-dark" style="min-height:70vh">
+                <div id="modalDocSpinner" class="py-5">
+                    <div class="spinner-border text-light"></div>
+                    <p class="text-light mt-2">Carregando documento...</p>
+                </div>
+                @* Container de imagem (TIFF/PNG/JPG) *@
+                <img id="modalDocImg" src="" alt="Documento"
+                     class="img-fluid d-none"
+                     style="max-height:85vh;object-fit:contain"
+                     onload="document.getElementById('modalDocSpinner').classList.add('d-none');this.classList.remove('d-none')"
+                     onerror="mostrarFallback()" />
+                @* Container de PDF *@
+                <iframe id="modalDocPdf" src="" class="d-none w-100 border-0" style="height:85vh"
+                        onload="document.getElementById('modalDocSpinner').classList.add('d-none');this.classList.remove('d-none')"></iframe>
+                @* Fallback: link para abrir externamente *@
+                <div id="modalDocFallback" class="d-none py-5 text-light">
+                    <i class="fas fa-file fa-3x mb-3"></i>
+                    <p>Não foi possível exibir o arquivo diretamente no navegador.</p>
+                    <a id="modalDocFallbackLink" href="#" target="_blank" class="btn btn-outline-light">
+                        <i class="fas fa-external-link-alt me-1"></i>Abrir arquivo em nova aba
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
+    function abrirDocumento(url, nome) {
+        document.getElementById('modalDocNome').textContent = nome;
+        document.getElementById('modalDocLink').href = url;
+        document.getElementById('modalDocFallbackLink').href = url;
+
+        // Reset state
+        document.getElementById('modalDocSpinner').classList.remove('d-none');
+        document.getElementById('modalDocImg').classList.add('d-none');
+        document.getElementById('modalDocPdf').classList.add('d-none');
+        document.getElementById('modalDocFallback').classList.add('d-none');
+        document.getElementById('modalDocImg').src = '';
+        document.getElementById('modalDocPdf').src = '';
+
+        var ext = url.split('.').pop().toLowerCase().split('?')[0];
+        if (ext === 'pdf') {
+            document.getElementById('modalDocPdf').src = url;
+        } else {
+            // TIFF, PNG, JPG, JPEG — tenta exibir como imagem
+            document.getElementById('modalDocImg').src = url;
+        }
+
+        new bootstrap.Modal(document.getElementById('modalDocumento')).show();
+    }
+
+    function mostrarFallback() {
+        document.getElementById('modalDocSpinner').classList.add('d-none');
+        document.getElementById('modalDocImg').classList.add('d-none');
+        document.getElementById('modalDocFallback').classList.remove('d-none');
+    }
+
     function copiarDados() {
         var json = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.DadosExtaidosDocumento ?? "{}"));
         navigator.clipboard.writeText(json).then(function() {

@@ -135,26 +135,26 @@
             <table class="table table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:2%">#</th>
+                        <th style="width:3%" class="ps-3">#</th>
                         <th>Arquivo</th>
                         <th style="width:12%">Tipo</th>
                         <th style="width:10%">Status</th>
                         <th style="width:8%">OCR</th>
-                        <th style="width:14%">Divergências</th>
-                        <th style="width:12%">Ações</th>
+                        <th style="width:12%" class="text-center">Divergências</th>
+                        <th style="width:12%" class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var doc in documentos)
                     {
                         var divs = divergenciasPorDoc.TryGetValue(doc.Id, out var d) ? d : new List<DivergenciaAuditoriaDto>();
-                        var temDivPendente = divs.Any(x => x.Status == StatusDivergencia.Pendente);
-                        var temDivCritica  = divs.Any(x => x.Severidade == SeveridadeDivergencia.Critica);
+                        var qtdPendentes = divs.Count(x => x.Status == StatusDivergencia.Pendente);
+                        var qtdTotal = divs.Count;
 
                         var rowCls = doc.Status switch
                         {
                             StatusDocumento.Erro      => "table-danger",
-                            StatusDocumento.Processado when divs.Any() => "table-warning",
+                            StatusDocumento.Processado when qtdPendentes > 0 => "table-warning",
                             StatusDocumento.Processado => "",
                             _ => "table-secondary"
                         };
@@ -208,49 +208,41 @@
                                     <small class="text-muted">-</small>
                                 }
                             </td>
-                            <td>
-                                @if (!divs.Any())
+                            <td class="text-center">
+                                @if (qtdTotal == 0)
                                 {
-                                    <span class="badge bg-success"><i class="fas fa-check me-1"></i>Sem divergências</span>
+                                    <span class="badge bg-success"><i class="fas fa-check me-1"></i>OK</span>
                                 }
                                 else
                                 {
-                                    <div class="d-flex flex-wrap gap-1">
-                                        @foreach (var div in divs.OrderByDescending(x => x.Severidade))
-                                        {
-                                            var (dCls, dIco) = div.Severidade switch
-                                            {
-                                                SeveridadeDivergencia.Critica => ("danger",    "skull-crossbones"),
-                                                SeveridadeDivergencia.Alta    => ("warning",   "exclamation-circle"),
-                                                SeveridadeDivergencia.Media   => ("info",      "info-circle"),
-                                                _                             => ("secondary", "minus-circle")
-                                            };
-                                            <a asp-controller="RevisaoHumana" asp-action="Revisar" asp-route-id="@div.Id"
-                                               class="badge bg-@dCls text-decoration-none"
-                                               title="@div.Descricao">
-                                                <i class="fas fa-@dIco me-1"></i>@div.SeveridadeLabel
-                                            </a>
-                                        }
-                                    </div>
+                                    @* Mostra apenas a contagem + botão para ver a lista de divergências deste documento *@
+                                    var divBadgeCls = qtdPendentes > 0 ? "warning" : "secondary";
+                                    var divBadgeIco = qtdPendentes > 0 ? "exclamation-triangle" : "check-circle";
+                                    <button type="button"
+                                            class="btn btn-sm btn-@divBadgeCls"
+                                            title="Ver @qtdTotal divergência(s) deste documento"
+                                            onclick="abrirDivergencias(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)))">
+                                        <i class="fas fa-@divBadgeIco me-1"></i>@qtdTotal
+                                    </button>
                                 }
                             </td>
-                            <td>
-                                <div class="d-flex gap-1">
+                            <td class="text-center">
+                                <div class="d-flex gap-1 justify-content-center">
                                     @if (!string.IsNullOrWhiteSpace(doc.DadosExtraidos) && doc.DadosExtraidos != "{}")
                                     {
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary"
-                                                title="Ver dados extraídos"
-                                                onclick="abrirJson(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)), @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.DadosExtraidos)))">
+                                                title="Ver dados extraídos (JSON)"
+                                                onclick="abrirJson(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)), @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.DadosExtraidos ?? "{}")))">
                                             <i class="fas fa-code"></i>
                                         </button>
                                     }
-                                    @if (divs.Any(x => x.Status == StatusDivergencia.Pendente))
+                                    @if (!string.IsNullOrWhiteSpace(doc.UrlDocumento))
                                     {
-                                        var primDiv = divs.First(x => x.Status == StatusDivergencia.Pendente);
-                                        <a asp-controller="RevisaoHumana" asp-action="Revisar" asp-route-id="@primDiv.Id"
-                                           class="btn btn-sm btn-warning" title="Revisar divergência">
-                                            <i class="fas fa-gavel"></i>
+                                        <a href="@doc.UrlDocumento" target="_blank"
+                                           class="btn btn-sm btn-outline-secondary"
+                                           title="Abrir documento original">
+                                            <i class="fas fa-file-image"></i>
                                         </a>
                                     }
                                 </div>
@@ -278,7 +270,25 @@
     </div>
 </div>
 
-@* ── Modal para visualização do JSON ── *@
+@* ── Modal: Lista de divergências do documento ── *@
+<div class="modal fade" id="modalDivergencias" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Divergências — <span id="modalDivNome"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="modalDivBody">
+                <div class="text-center py-4"><div class="spinner-border text-warning"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Modal: JSON dos dados extraídos ── *@
 <div class="modal fade" id="modalJson" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -299,9 +309,57 @@
     </div>
 </div>
 
-@section Scripts {
+@* ── Dados das divergências embutidos para o modal ── *@
 <script>
+    var _divsPorDoc = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        divergenciasPorDoc.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.Select(div => new {
+                id = div.Id,
+                descricao = div.Descricao,
+                severidade = div.SeveridadeLabel,
+                status = div.StatusLabel,
+                tipo = div.Tipo.ToString(),
+                campo = div.CampoAfetado ?? "",
+                valorEncontrado = div.ValorEncontrado ?? "",
+                valorEsperado = div.ValorEsperado ?? ""
+            }).ToList()
+        )
+    ));
+
     var _jsonAtual = '';
+
+    function abrirDivergencias(docId, nomeArquivo) {
+        document.getElementById('modalDivNome').textContent = nomeArquivo;
+        var divs = _divsPorDoc[docId] || [];
+        var body = document.getElementById('modalDivBody');
+
+        if (divs.length === 0) {
+            body.innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-check-circle fa-2x text-success mb-2"></i><p>Sem divergências.</p></div>';
+        } else {
+            var sevCls = { 'Crítica': 'danger', 'Alta': 'warning', 'Média': 'info', 'Baixa': 'secondary' };
+            var rows = divs.map(function(d) {
+                var cls = sevCls[d.severidade] || 'secondary';
+                var extra = '';
+                if (d.campo) extra += '<br><small class="text-muted">Campo: <code>' + d.campo + '</code></small>';
+                if (d.valorEncontrado) extra += '<br><small class="text-danger">Encontrado: ' + d.valorEncontrado + '</small>';
+                if (d.valorEsperado) extra += '<br><small class="text-success">Esperado: ' + d.valorEsperado + '</small>';
+                return '<tr>' +
+                    '<td class="ps-3"><small class="text-muted">#' + d.id + '</small></td>' +
+                    '<td><span class="badge bg-' + cls + '">' + d.severidade + '</span></td>' +
+                    '<td><small>' + d.tipo + '</small></td>' +
+                    '<td><small>' + d.descricao + extra + '</small></td>' +
+                    '<td><span class="badge bg-secondary">' + d.status + '</span></td>' +
+                    '<td><a href="/RevisaoHumana/Revisar/' + d.id + '" class="btn btn-sm btn-primary"><i class="fas fa-gavel"></i></a></td>' +
+                    '</tr>';
+            }).join('');
+            body.innerHTML = '<table class="table table-hover mb-0 align-middle">' +
+                '<thead class="table-light"><tr><th class="ps-3">#</th><th>Severidade</th><th>Tipo</th><th>Descrição</th><th>Status</th><th>Ação</th></tr></thead>' +
+                '<tbody>' + rows + '</tbody></table>';
+        }
+
+        new bootstrap.Modal(document.getElementById('modalDivergencias')).show();
+    }
 
     function abrirJson(id, nome, jsonRaw) {
         _jsonAtual = jsonRaw;
@@ -319,10 +377,7 @@
         navigator.clipboard.writeText(_jsonAtual).then(function() {
             var btn = event.target.closest('button');
             btn.innerHTML = '<i class="fas fa-check me-1"></i>Copiado!';
-            setTimeout(function() {
-                btn.innerHTML = '<i class="fas fa-copy me-1"></i>Copiar JSON';
-            }, 2000);
+            setTimeout(function() { btn.innerHTML = '<i class="fas fa-copy me-1"></i>Copiar JSON'; }, 2000);
         });
     }
 </script>
-}

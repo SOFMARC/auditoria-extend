@@ -1,4 +1,5 @@
 using AuditoriaExtend.Application.Services;
+using AuditoriaExtend.Web.Workers;
 using Serilog;
 using Serilog.Debugging;
 using AuditoriaExtend.Infrastructure;
@@ -43,8 +44,14 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddApplication();
 
+    // IHttpClientFactory necessário para FraudeAnaliseService chamar a API OpenAI
+    builder.Services.AddHttpClient();
+
     builder.Services.Configure<AuditoriaOptions>(
         builder.Configuration.GetSection(AuditoriaOptions.SectionName));
+
+    // Worker antifraude: verifica lotes concluídos sem divergências pendentes a cada 5 minutos
+    builder.Services.AddHostedService<FraudeAnaliseWorker>();
 
     var app = builder.Build();
 

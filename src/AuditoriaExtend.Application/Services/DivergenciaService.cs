@@ -65,6 +65,15 @@ public class DivergenciaService : IDivergenciaService
                 Domain.Enums.TipoDocumento.Receita      => "Receita",
                 _                                       => "Desconhecido"
             };
+            // Converte caminho físico (wwwroot\uploads\...) para URL pública (/uploads/...)
+            if (!string.IsNullOrWhiteSpace(doc.CaminhoArquivo))
+            {
+                var url = doc.CaminhoArquivo
+                    .Replace("wwwroot\\", "")
+                    .Replace("wwwroot/", "")
+                    .Replace("\\", "/");
+                dto.UrlDocumentoOriginal = "/" + url.TrimStart('/');
+            }
         }
         return dto;
     }

@@ -11,6 +11,8 @@ public class DivergenciaAuditoriaDto
     /// <summary>JSON dos dados extraídos do documento vinculado, para exibir na tela de revisão.</summary>
     public string? DadosExtaidosDocumento { get; set; }
     public string? TipoDocumentoLabel { get; set; }
+    /// <summary>URL pública do arquivo original (TIFF/PDF) para visualização em modal.</summary>
+    public string? UrlDocumentoOriginal { get; set; }
     public TipoDivergencia Tipo { get; set; }
     public SeveridadeDivergencia Severidade { get; set; }
     public StatusDivergencia Status { get; set; }

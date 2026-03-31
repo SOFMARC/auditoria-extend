@@ -12,6 +12,7 @@ public class AuditoriaDbContext : DbContext
     public DbSet<AtendimentoAgrupado> AtendimentosAgrupados => Set<AtendimentoAgrupado>();
     public DbSet<DivergenciaAuditoria> DivergenciasAuditoria => Set<DivergenciaAuditoria>();
     public DbSet<RevisaoHumana> RevisoesHumanas => Set<RevisaoHumana>();
+    public DbSet<ResultadoFraudeAnalise> ResultadosFraudeAnalise => Set<ResultadoFraudeAnalise>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +71,19 @@ public class AuditoriaDbContext : DbContext
             e.Property(r => r.NomeAuditor).HasMaxLength(200).IsRequired();
             e.Property(r => r.Justificativa).HasMaxLength(1000);
             e.Property(r => r.ObservacaoCorrecao).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<ResultadoFraudeAnalise>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.StatusAuditoria).HasMaxLength(100);
+            e.Property(r => r.NivelRisco).HasMaxLength(50);
+            e.Property(r => r.Resumo).HasMaxLength(2000);
+            e.Property(r => r.RecomendacaoFinal).HasMaxLength(2000);
+            e.Property(r => r.MensagemErro).HasMaxLength(2000);
+            // ResultadoJson pode ser grande (JSON completo do LLM)
+            e.Property(r => r.ResultadoJson).HasColumnType("nvarchar(max)");
+            e.HasOne(r => r.Lote).WithMany().HasForeignKey(r => r.LoteId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

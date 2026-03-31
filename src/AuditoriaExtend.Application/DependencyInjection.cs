@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<IImportacaoService, ImportacaoService>();
         services.AddScoped<IAuditoriaRegraService, AuditoriaRegraService>();
         services.AddScoped<IWebhookProcessorService, WebhookProcessorService>();
+        services.AddScoped<IFraudeAnaliseService, FraudeAnaliseService>();
 
         return services;
     }

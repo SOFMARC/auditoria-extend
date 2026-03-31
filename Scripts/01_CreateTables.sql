@@ -16,6 +16,9 @@ IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Docume
 IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[AtendimentosAgrupados]') AND type = N'U')
     DROP TABLE [dbo].[AtendimentosAgrupados];
 
+IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ResultadosFraudeAnalise]') AND type = N'U')
+    DROP TABLE [dbo].[ResultadosFraudeAnalise];
+
 IF EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Lotes]') AND type = N'U')
     DROP TABLE [dbo].[Lotes];
 GO
@@ -207,4 +210,35 @@ CREATE INDEX [IX_DivergenciasAuditoria_Tipo] ON [dbo].[DivergenciasAuditoria]([T
 CREATE INDEX [IX_RevisoesHumanas_DivergenciaId] ON [dbo].[RevisoesHumanas]([DivergenciaId]);
 CREATE INDEX [IX_RevisoesHumanas_NomeAuditor] ON [dbo].[RevisoesHumanas]([NomeAuditor]);
 CREATE INDEX [IX_RevisoesHumanas_DataRevisao] ON [dbo].[RevisoesHumanas]([DataRevisao] DESC);
+
+-- ============================================================
+-- Tabela: ResultadosFraudeAnalise
+-- Armazena o resultado da análise antifraude via LLM por lote
+-- ============================================================
+CREATE TABLE [dbo].[ResultadosFraudeAnalise]
+(
+    [Id]                    INT IDENTITY(1,1) NOT NULL,
+    [LoteId]                INT NOT NULL,
+    [Status]                INT NOT NULL DEFAULT 0,  -- 0=Pendente 1=Processando 2=Concluido 3=Erro
+    [ResultadoJson]         NVARCHAR(MAX) NULL,
+    [StatusAuditoria]       NVARCHAR(100) NULL,
+    [ScoreRisco]            INT NULL,
+    [NivelRisco]            NVARCHAR(50) NULL,
+    [Resumo]                NVARCHAR(2000) NULL,
+    [RecomendacaoFinal]     NVARCHAR(2000) NULL,
+    [QuantidadeAchados]     INT NOT NULL DEFAULT 0,
+    [MensagemErro]          NVARCHAR(2000) NULL,
+    [DataInicio]            DATETIME2 NULL,
+    [DataFim]               DATETIME2 NULL,
+    [DataCriacao]           DATETIME2 NULL CONSTRAINT [DF_ResultadosFraudeAnalise_DataCriacao] DEFAULT GETUTCDATE(),
+    [DataAtualizacao]       DATETIME2 NULL CONSTRAINT [DF_ResultadosFraudeAnalise_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+    CONSTRAINT [PK_ResultadosFraudeAnalise] PRIMARY KEY ([Id]),
+    CONSTRAINT [FK_ResultadosFraudeAnalise_Lotes]
+        FOREIGN KEY ([LoteId]) REFERENCES [dbo].[Lotes]([Id]) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX [IX_ResultadosFraudeAnalise_LoteId] ON [dbo].[ResultadosFraudeAnalise]([LoteId]);
+CREATE INDEX [IX_ResultadosFraudeAnalise_Status] ON [dbo].[ResultadosFraudeAnalise]([Status]);
 GO

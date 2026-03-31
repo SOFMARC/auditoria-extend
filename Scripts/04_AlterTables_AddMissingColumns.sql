@@ -281,3 +281,51 @@ GO
 
 PRINT '=== Migracao 04_AlterTables_AddMissingColumns concluida com sucesso! ===';
 GO
+
+-- ============================================================
+-- Tabela: ResultadosFraudeAnalise (NOVA - Fase 4 Antifraude)
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ResultadosFraudeAnalise]') AND type = N'U')
+BEGIN
+    CREATE TABLE [dbo].[ResultadosFraudeAnalise]
+    (
+        [Id]                    INT IDENTITY(1,1) NOT NULL,
+        [LoteId]                INT NOT NULL,
+        [Status]                INT NOT NULL DEFAULT 0,
+        [ResultadoJson]         NVARCHAR(MAX) NULL,
+        [StatusAuditoria]       NVARCHAR(100) NULL,
+        [ScoreRisco]            INT NULL,
+        [NivelRisco]            NVARCHAR(50) NULL,
+        [Resumo]                NVARCHAR(2000) NULL,
+        [RecomendacaoFinal]     NVARCHAR(2000) NULL,
+        [QuantidadeAchados]     INT NOT NULL DEFAULT 0,
+        [MensagemErro]          NVARCHAR(2000) NULL,
+        [DataInicio]            DATETIME2 NULL,
+        [DataFim]               DATETIME2 NULL,
+        [DataCriacao]           DATETIME2 NULL CONSTRAINT [DF_ResultadosFraudeAnalise_DataCriacao] DEFAULT GETUTCDATE(),
+        [DataAtualizacao]       DATETIME2 NULL CONSTRAINT [DF_ResultadosFraudeAnalise_DataAtualizacao] DEFAULT GETUTCDATE(),
+
+        CONSTRAINT [PK_ResultadosFraudeAnalise] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ResultadosFraudeAnalise_Lotes]
+            FOREIGN KEY ([LoteId]) REFERENCES [dbo].[Lotes]([Id]) ON DELETE CASCADE
+    );
+    PRINT 'Tabela ResultadosFraudeAnalise criada.';
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ResultadosFraudeAnalise_LoteId' AND object_id = OBJECT_ID('ResultadosFraudeAnalise'))
+BEGIN
+    CREATE INDEX [IX_ResultadosFraudeAnalise_LoteId] ON [dbo].[ResultadosFraudeAnalise]([LoteId]);
+    PRINT 'Indice IX_ResultadosFraudeAnalise_LoteId criado.';
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ResultadosFraudeAnalise_Status' AND object_id = OBJECT_ID('ResultadosFraudeAnalise'))
+BEGIN
+    CREATE INDEX [IX_ResultadosFraudeAnalise_Status] ON [dbo].[ResultadosFraudeAnalise]([Status]);
+    PRINT 'Indice IX_ResultadosFraudeAnalise_Status criado.';
+END
+GO
+
+PRINT '=== Migracao 04 (v3) concluida com sucesso! ===';
+GO

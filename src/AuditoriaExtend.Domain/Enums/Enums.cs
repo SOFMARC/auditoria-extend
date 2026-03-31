@@ -95,6 +95,15 @@ public enum TipoDivergencia
     ConfiancaBaixa = 100
 }
 
+/// <summary>Status da análise antifraude via LLM.</summary>
+public enum StatusFraudeAnalise
+{
+    Pendente = 0,
+    Processando = 1,
+    Concluido = 2,
+    Erro = 3
+}
+
 /// <summary>Modo de auditoria para tratamento de origem suspeita (Regra D).</summary>
 public enum ModoAuditoria
 {
