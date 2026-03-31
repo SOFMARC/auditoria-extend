@@ -455,6 +455,17 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     // ─────────────────────────────────────────────────────────────────────────
     // REGRA F — Ausência documental
     // ─────────────────────────────────────────────────────────────────────────
+    /// <summary>
+    /// Detecta ausência documental cruzando procedimentos entre pedidos e guias.
+    ///
+    /// Regra de negócio:
+    /// - Um pedido médico NÃO é considerado "sem guia" se QUALQUER guia do mesmo
+    ///   atendimento agrupado cobrir ao menos um dos procedimentos do pedido.
+    /// - Um pedido só gera divergência PedidoSemGuia se não houver NENHUMA guia
+    ///   no atendimento E não houver guias com procedimentos em comum.
+    /// - Isso suporta o cenário real: 1 pedido → N guias (cada guia cobre parte
+    ///   dos procedimentos do pedido).
+    /// </summary>
     public async Task<int> DetectarAusenciaDocumentalAsync(int loteId)
     {
         var todos = await _repoDoc.GetAllAsync();
@@ -466,12 +477,13 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         foreach (var atendimento in atendimentosLote)
         {
             var docsAtend = docsLote.Where(d => d.AtendimentoAgrupadoId == atendimento.Id).ToList();
-            var temPedido = docsAtend.Any(d => d.TipoDocumento == TipoDocumento.PedidoMedico);
-            var temGuia = docsAtend.Any(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT);
+            var pedidos   = docsAtend.Where(d => d.TipoDocumento == TipoDocumento.PedidoMedico).ToList();
+            var guias     = docsAtend.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
 
-            if (temGuia && !temPedido)
+            // F1: Guia sem nenhum pedido no atendimento
+            if (guias.Any() && !pedidos.Any())
             {
-                var guia = docsAtend.First(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT);
+                var guia = guias.First();
                 await _divService.CriarAsync(guia.Id,
                     TipoDivergencia.GuiaSemPedido, SeveridadeDivergencia.Alta,
                     $"Guia sem pedido médico correspondente no atendimento '{atendimento.NumeroGuia ?? atendimento.Id.ToString()}'.",
@@ -479,17 +491,86 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 divergencias++;
             }
 
-            if (temPedido && !temGuia)
+            // F2: Pedido sem nenhuma guia no atendimento
+            // Mas SOMENTE se não houver guias com procedimentos em comum com o pedido.
+            // Isso evita falso positivo quando o pedido tem guias mas o agrupamento
+            // não capturou o vínculo explícito (ex: pedido e guias agrupados pelo mesmo paciente).
+            if (pedidos.Any() && !guias.Any())
             {
-                var pedido = docsAtend.First(d => d.TipoDocumento == TipoDocumento.PedidoMedico);
-                await _divService.CriarAsync(pedido.Id,
-                    TipoDivergencia.PedidoSemGuia, SeveridadeDivergencia.Alta,
-                    $"Pedido médico sem guia correspondente no atendimento '{atendimento.NumeroPedido ?? atendimento.Id.ToString()}'.",
-                    atendimentoAgrupadoId: atendimento.Id);
-                divergencias++;
+                foreach (var pedido in pedidos)
+                {
+                    JObject? fieldsPedido = null;
+                    try { if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos)) fieldsPedido = JObject.Parse(pedido.DadosExtraidos); } catch { }
+
+                    var itensPedido = fieldsPedido != null
+                        ? ExtrairListaItensMulti(fieldsPedido, "itensSolicitados", "itens_solicitados", "procedimentos", "itens_pedido")
+                        : new List<string>();
+
+                    var pacientePedido = ExtrairCampoMulti(fieldsPedido, "nomePaciente", "nome_paciente", "nome_beneficiario");
+
+                    // Busca guias de QUALQUER atendimento do mesmo lote que tenham o mesmo paciente
+                    // e ao menos um procedimento em comum com o pedido.
+                    var guiasLote = docsLote.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
+
+                    bool pedidoCobertoPorGuia = false;
+
+                    foreach (var guia in guiasLote)
+                    {
+                        JObject? fieldsGuia = null;
+                        try { if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos)) fieldsGuia = JObject.Parse(guia.DadosExtraidos); } catch { }
+                        if (fieldsGuia == null) continue;
+
+                        // Verifica se o paciente é o mesmo (se ambos tiverem nome)
+                        var pacienteGuia = ExtrairCampoMulti(fieldsGuia, "nomePaciente", "nome_paciente", "nome_beneficiario");
+                        if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
+                            && !NomesSimiliares(pacientePedido, pacienteGuia))
+                            continue; // Paciente diferente — esta guia não é do mesmo paciente
+
+                        // Verifica se há ao menos um procedimento em comum
+                        var itensGuia = ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados",
+                                                               "itensSolicitados", "itens_solicitados");
+
+                        if (itensPedido.Any())
+                        {
+                            // Há procedimentos no pedido: verifica intersecção
+                            if (itensGuia.Any(g => itensPedido.Any(p => NormalizarCodigo(p) == NormalizarCodigo(g))))
+                            {
+                                pedidoCobertoPorGuia = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // Pedido sem itens extraídos (OCR falhou): considera coberto se
+                            // há guia do mesmo paciente no lote (não gera falso positivo).
+                            if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
+                                && NomesSimiliares(pacientePedido, pacienteGuia))
+                            {
+                                pedidoCobertoPorGuia = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!pedidoCobertoPorGuia)
+                    {
+                        await _divService.CriarAsync(pedido.Id,
+                            TipoDivergencia.PedidoSemGuia, SeveridadeDivergencia.Alta,
+                            $"Pedido médico sem guia correspondente no atendimento '{atendimento.NumeroPedido ?? atendimento.Id.ToString()}'.",
+                            atendimentoAgrupadoId: atendimento.Id);
+                        divergencias++;
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "Regra F: Pedido {DocId} considerado coberto por guia(s) do lote via cruzamento de procedimentos/paciente.",
+                            pedido.Id);
+                    }
+                }
             }
 
-            if (temPedido && temGuia)
+            // F3: Ambos presentes → executa regras B (cruzamento pedido x guias)
+            if (pedidos.Any() && guias.Any())
                 await AuditarPedidoVsGuiasAsync(atendimento.Id);
         }
 

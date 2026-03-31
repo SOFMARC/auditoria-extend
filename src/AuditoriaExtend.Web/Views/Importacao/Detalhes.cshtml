@@ -1,7 +1,11 @@
 @using AuditoriaExtend.Application.DTOs
+@using AuditoriaExtend.Domain.Enums
 @model LoteDto
 @{
     ViewData["Title"] = $"Lote #{Model.Id}";
+    var documentos = ViewBag.Documentos as List<DocumentoDto> ?? new List<DocumentoDto>();
+    var divergenciasPorDoc = ViewBag.DivergenciasPorDoc as Dictionary<int, List<DivergenciaAuditoriaDto>>
+                             ?? new Dictionary<int, List<DivergenciaAuditoriaDto>>();
 }
 
 <div class="row mb-4">
@@ -16,7 +20,7 @@
         <h2><i class="fas fa-file-archive me-2 text-primary"></i>@Model.NomeArquivo</h2>
     </div>
     <div class="col-auto d-flex gap-2">
-        @if (Model.Status == AuditoriaExtend.Domain.Enums.StatusLote.Pendente)
+        @if (Model.Status == StatusLote.Pendente)
         {
             <form asp-action="Processar" asp-route-id="@Model.Id" method="post">
                 <button type="submit" class="btn btn-success">
@@ -30,6 +34,7 @@
     </div>
 </div>
 
+@* ── Cards de resumo ── *@
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card text-center h-100">
@@ -37,10 +42,10 @@
                 @{
                     var (cls, ic) = Model.Status switch
                     {
-                        AuditoriaExtend.Domain.Enums.StatusLote.Concluido => ("success", "check-circle"),
-                        AuditoriaExtend.Domain.Enums.StatusLote.Processando => ("warning", "spinner fa-spin"),
-                        AuditoriaExtend.Domain.Enums.StatusLote.Erro => ("danger", "times-circle"),
-                        _ => ("secondary", "clock")
+                        StatusLote.Concluido   => ("success", "check-circle"),
+                        StatusLote.Processando => ("warning", "spinner fa-spin"),
+                        StatusLote.Erro        => ("danger", "times-circle"),
+                        _                      => ("secondary", "clock")
                     };
                 }
                 <i class="fas fa-@ic fa-2x text-@cls mb-2"></i>
@@ -78,6 +83,7 @@
     </div>
 </div>
 
+@* ── Informações do lote ── *@
 <div class="card mb-3">
     <div class="card-header"><h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Informações do Lote</h5></div>
     <div class="card-body">
@@ -105,15 +111,218 @@
     </div>
 </div>
 
+@* ── Banner de divergências ── *@
 @if (Model.QuantidadeDivergencias > 0)
 {
-    <div class="card border-warning">
-        <div class="card-body text-center py-4">
-            <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
-            <p class="mb-2">Este lote possui <strong>@Model.QuantidadeDivergencias divergências</strong> aguardando revisão.</p>
-            <a asp-controller="RevisaoHumana" asp-action="Fila" class="btn btn-warning">
-                <i class="fas fa-tasks me-1"></i>Ir para Revisão Humana
-            </a>
+    <div class="alert alert-warning d-flex align-items-center justify-content-between mb-3">
+        <span><i class="fas fa-exclamation-triangle me-2"></i>
+            Este lote possui <strong>@Model.QuantidadeDivergencias divergência(s)</strong> aguardando revisão.
+        </span>
+        <a asp-controller="RevisaoHumana" asp-action="Fila" class="btn btn-warning btn-sm">
+            <i class="fas fa-tasks me-1"></i>Ir para Revisão
+        </a>
+    </div>
+}
+
+@* ── Lista de documentos ── *@
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Documentos do Lote (@documentos.Count)</h5>
+    </div>
+    <div class="card-body p-0">
+        @if (documentos.Any())
+        {
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:2%">#</th>
+                        <th>Arquivo</th>
+                        <th style="width:12%">Tipo</th>
+                        <th style="width:10%">Status</th>
+                        <th style="width:8%">OCR</th>
+                        <th style="width:14%">Divergências</th>
+                        <th style="width:12%">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in documentos)
+                    {
+                        var divs = divergenciasPorDoc.TryGetValue(doc.Id, out var d) ? d : new List<DivergenciaAuditoriaDto>();
+                        var temDivPendente = divs.Any(x => x.Status == StatusDivergencia.Pendente);
+                        var temDivCritica  = divs.Any(x => x.Severidade == SeveridadeDivergencia.Critica);
+
+                        var rowCls = doc.Status switch
+                        {
+                            StatusDocumento.Erro      => "table-danger",
+                            StatusDocumento.Processado when divs.Any() => "table-warning",
+                            StatusDocumento.Processado => "",
+                            _ => "table-secondary"
+                        };
+
+                        var (stBadge, stIcon) = doc.Status switch
+                        {
+                            StatusDocumento.Processado       => ("success",   "check-circle"),
+                            StatusDocumento.Erro             => ("danger",    "times-circle"),
+                            StatusDocumento.EnviadoExtend    => ("info",      "paper-plane"),
+                            StatusDocumento.AguardandoExtend => ("warning",   "hourglass-half"),
+                            _                                => ("secondary", "clock")
+                        };
+
+                        <tr class="@rowCls">
+                            <td class="text-muted ps-3"><small>#@doc.Id</small></td>
+                            <td>
+                                <span class="fw-semibold small">@doc.NomeArquivo</span>
+                                @if (doc.OrigemSuspeita)
+                                {
+                                    <span class="badge bg-danger ms-1" title="Origem suspeita"><i class="fas fa-skull-crossbones"></i></span>
+                                }
+                                @if (doc.RevisaoHumanaNecessaria)
+                                {
+                                    <span class="badge bg-warning text-dark ms-1" title="Revisão humana necessária"><i class="fas fa-user-check"></i></span>
+                                }
+                                @if (!string.IsNullOrEmpty(doc.MensagemErro))
+                                {
+                                    <br /><small class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>@doc.MensagemErro</small>
+                                }
+                            </td>
+                            <td><span class="badge bg-secondary">@doc.TipoLabel</span></td>
+                            <td>
+                                <span class="badge bg-@stBadge">
+                                    <i class="fas fa-@stIcon me-1"></i>@doc.StatusLabel
+                                </span>
+                            </td>
+                            <td>
+                                @if (doc.Status == StatusDocumento.Processado)
+                                {
+                                    var ocrPct = (int)(doc.ConfiancaOcr * 100);
+                                    var ocrCls = ocrPct >= 90 ? "success" : ocrPct >= 70 ? "warning" : "danger";
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div class="progress flex-grow-1" style="height:6px">
+                                            <div class="progress-bar bg-@ocrCls" style="width:@ocrPct%"></div>
+                                        </div>
+                                        <small class="text-muted">@ocrPct%</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <small class="text-muted">-</small>
+                                }
+                            </td>
+                            <td>
+                                @if (!divs.Any())
+                                {
+                                    <span class="badge bg-success"><i class="fas fa-check me-1"></i>Sem divergências</span>
+                                }
+                                else
+                                {
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var div in divs.OrderByDescending(x => x.Severidade))
+                                        {
+                                            var (dCls, dIco) = div.Severidade switch
+                                            {
+                                                SeveridadeDivergencia.Critica => ("danger",    "skull-crossbones"),
+                                                SeveridadeDivergencia.Alta    => ("warning",   "exclamation-circle"),
+                                                SeveridadeDivergencia.Media   => ("info",      "info-circle"),
+                                                _                             => ("secondary", "minus-circle")
+                                            };
+                                            <a asp-controller="RevisaoHumana" asp-action="Revisar" asp-route-id="@div.Id"
+                                               class="badge bg-@dCls text-decoration-none"
+                                               title="@div.Descricao">
+                                                <i class="fas fa-@dIco me-1"></i>@div.SeveridadeLabel
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    @if (!string.IsNullOrWhiteSpace(doc.DadosExtraidos) && doc.DadosExtraidos != "{}")
+                                    {
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary"
+                                                title="Ver dados extraídos"
+                                                onclick="abrirJson(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)), @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.DadosExtraidos)))">
+                                            <i class="fas fa-code"></i>
+                                        </button>
+                                    }
+                                    @if (divs.Any(x => x.Status == StatusDivergencia.Pendente))
+                                    {
+                                        var primDiv = divs.First(x => x.Status == StatusDivergencia.Pendente);
+                                        <a asp-controller="RevisaoHumana" asp-action="Revisar" asp-route-id="@primDiv.Id"
+                                           class="btn btn-sm btn-warning" title="Revisar divergência">
+                                            <i class="fas fa-gavel"></i>
+                                        </a>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-inbox fa-3x mb-3"></i>
+                <p>Nenhum documento encontrado neste lote.</p>
+                @if (Model.Status == StatusLote.Pendente)
+                {
+                    <form asp-action="Processar" asp-route-id="@Model.Id" method="post">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-play me-1"></i>Processar Lote
+                        </button>
+                    </form>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Modal para visualização do JSON ── *@
+<div class="modal fade" id="modalJson" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-code me-2"></i>Dados Extraídos — <span id="modalJsonNome"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <pre id="modalJsonConteudo" class="bg-dark text-light p-3 mb-0 rounded-bottom" style="font-size:0.8rem;max-height:70vh;overflow:auto"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarJson()">
+                    <i class="fas fa-copy me-1"></i>Copiar JSON
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
         </div>
     </div>
+</div>
+
+@section Scripts {
+<script>
+    var _jsonAtual = '';
+
+    function abrirJson(id, nome, jsonRaw) {
+        _jsonAtual = jsonRaw;
+        document.getElementById('modalJsonNome').textContent = nome;
+        try {
+            var obj = JSON.parse(jsonRaw);
+            document.getElementById('modalJsonConteudo').textContent = JSON.stringify(obj, null, 2);
+        } catch(e) {
+            document.getElementById('modalJsonConteudo').textContent = jsonRaw;
+        }
+        new bootstrap.Modal(document.getElementById('modalJson')).show();
+    }
+
+    function copiarJson() {
+        navigator.clipboard.writeText(_jsonAtual).then(function() {
+            var btn = event.target.closest('button');
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Copiado!';
+            setTimeout(function() {
+                btn.innerHTML = '<i class="fas fa-copy me-1"></i>Copiar JSON';
+            }, 2000);
+        });
+    }
+</script>
 }

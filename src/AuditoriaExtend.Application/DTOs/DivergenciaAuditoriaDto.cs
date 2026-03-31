@@ -8,6 +8,9 @@ public class DivergenciaAuditoriaDto
     public int DocumentoId { get; set; }
     public string NomeArquivoDocumento { get; set; } = string.Empty;
     public int? AtendimentoAgrupadoId { get; set; }
+    /// <summary>JSON dos dados extraídos do documento vinculado, para exibir na tela de revisão.</summary>
+    public string? DadosExtaidosDocumento { get; set; }
+    public string? TipoDocumentoLabel { get; set; }
     public TipoDivergencia Tipo { get; set; }
     public SeveridadeDivergencia Severidade { get; set; }
     public StatusDivergencia Status { get; set; }

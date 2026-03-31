@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using AuditoriaExtend.Application.Common;
+using AuditoriaExtend.Application.DTOs;
 using AuditoriaExtend.Application.Interfaces;
 
 namespace AuditoriaExtend.Web.Controllers;
@@ -8,12 +9,17 @@ public class ImportacaoController : Controller
 {
     private readonly IImportacaoService _importacaoService;
     private readonly ILoteService _loteService;
+    private readonly IDocumentoService _documentoService;
+    private readonly IDivergenciaService _divergenciaService;
     private const long MaxFileSizeBytes = 100 * 1024 * 1024; // 100 MB
 
-    public ImportacaoController(IImportacaoService importacaoService, ILoteService loteService)
+    public ImportacaoController(IImportacaoService importacaoService, ILoteService loteService,
+        IDocumentoService documentoService, IDivergenciaService divergenciaService)
     {
         _importacaoService = importacaoService;
         _loteService = loteService;
+        _documentoService = documentoService;
+        _divergenciaService = divergenciaService;
     }
 
     // GET /Importacao
@@ -81,6 +87,20 @@ public class ImportacaoController : Controller
     {
         var lote = await _loteService.ObterPorIdAsync(id);
         if (lote == null) return NotFound();
+
+        // Carrega todos os documentos do lote e suas divergências para exibir na tabela
+        var documentos = (await _documentoService.ListarPorLoteAsync(id)).ToList();
+
+        // Para cada documento, busca as divergências associadas
+        var divergenciasPorDoc = new Dictionary<int, List<AuditoriaExtend.Application.DTOs.DivergenciaAuditoriaDto>>();
+        foreach (var doc in documentos)
+        {
+            var divs = (await _divergenciaService.ListarPorDocumentoAsync(doc.Id)).ToList();
+            divergenciasPorDoc[doc.Id] = divs;
+        }
+
+        ViewBag.Documentos = documentos;
+        ViewBag.DivergenciasPorDoc = divergenciasPorDoc;
         return View(lote);
     }
 

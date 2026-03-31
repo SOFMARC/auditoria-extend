@@ -50,10 +50,23 @@ public class DivergenciaService : IDivergenciaService
     {
         var div = await _repo.GetByIdAsync(id);
         if (div == null) return null;
-        // Enrich with document name
+        // Enrich with document data for the Revisar view
         var doc = await _repoDoc.GetByIdAsync(div.DocumentoId);
         if (doc != null) div.Documento = doc;
-        return _mapper.Map<DivergenciaAuditoriaDto>(div);
+        var dto = _mapper.Map<DivergenciaAuditoriaDto>(div);
+        if (doc != null)
+        {
+            dto.DadosExtaidosDocumento = doc.DadosExtraidos;
+            dto.TipoDocumentoLabel = doc.TipoDocumento switch
+            {
+                Domain.Enums.TipoDocumento.GuiaSPSADT   => "Guia SPSADT",
+                Domain.Enums.TipoDocumento.PedidoMedico => "Pedido Médico",
+                Domain.Enums.TipoDocumento.Laudo        => "Laudo",
+                Domain.Enums.TipoDocumento.Receita      => "Receita",
+                _                                       => "Desconhecido"
+            };
+        }
+        return dto;
     }
 
     public async Task<PaginatedList<DivergenciaAuditoriaDto>> ListarAsync(PagedRequest request,
