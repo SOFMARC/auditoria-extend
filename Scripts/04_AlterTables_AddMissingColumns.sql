@@ -1,135 +1,115 @@
 -- ============================================================
--- Sistema de Auditoria de Pedidos e Guias Medicas
+-- Sistema de Auditoria Extend
 -- Script: 04_AlterTables_AddMissingColumns.sql
--- Versao: 1.0 - Adiciona colunas faltantes para alinhar
---         a estrutura SQL com as entidades C# do dominio
--- Execute APOS o script 01_CreateTables.sql
+-- Versao: 2.0 - Adiciona colunas faltantes em bancos EXISTENTES
+--
+-- Execute este script se o banco ja existe e foi criado com
+-- uma versao anterior do 01_CreateTables.sql.
+-- Cada bloco e idempotente (pode ser executado multiplas vezes).
 -- ============================================================
 
+PRINT '=== Iniciando migracao 04_AlterTables_AddMissingColumns ===';
+GO
+
 -- ============================================================
--- Tabela: Documentos - Adicionar colunas de integracao Extend
+-- Tabela: Lotes
 -- ============================================================
 
--- ExtendFileId: ID do arquivo enviado ao Extend via POST /files/upload
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtendFileId')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'QuantidadeDocumentos')
 BEGIN
-    ALTER TABLE Documentos ADD ExtendFileId NVARCHAR(200) NULL;
-    PRINT 'Coluna ExtendFileId adicionada a Documentos.';
-END
-ELSE PRINT 'Coluna ExtendFileId ja existe em Documentos.';
-GO
-
--- ExtendRunId: ID do job de extracao (extract_run) retornado pelo Extend
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtendRunId')
-BEGIN
-    ALTER TABLE Documentos ADD ExtendRunId NVARCHAR(200) NULL;
-    PRINT 'Coluna ExtendRunId adicionada a Documentos.';
-END
-ELSE PRINT 'Coluna ExtendRunId ja existe em Documentos.';
-GO
-
--- ExtractorId: ID do extractor configurado na Extend para este tipo de documento
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtractorId')
-BEGIN
-    ALTER TABLE Documentos ADD ExtractorId NVARCHAR(200) NULL;
-    PRINT 'Coluna ExtractorId adicionada a Documentos.';
-END
-ELSE PRINT 'Coluna ExtractorId ja existe em Documentos.';
-GO
-
--- DadosExtraidos: JSON completo retornado pelo webhook da Extend (output.value normalizado)
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'DadosExtraidos')
-BEGIN
-    ALTER TABLE Documentos ADD DadosExtraidos NVARCHAR(MAX) NULL;
-    PRINT 'Coluna DadosExtraidos adicionada a Documentos.';
-END
-ELSE PRINT 'Coluna DadosExtraidos ja existe em Documentos.';
-GO
-
--- ConfiancaOcr: Confianca media de OCR retornada pela Extend (0.0 a 1.0)
--- Renomear ConfiancaOCR para ConfiancaOcr se necessario (EF Core usa ConfiancaOcr)
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ConfiancaOcr')
-BEGIN
-    -- Se a coluna antiga existia como ConfiancaOCR, renomeia
-    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ConfiancaOCR')
-        EXEC sp_rename 'Documentos.ConfiancaOCR', 'ConfiancaOcr', 'COLUMN';
+    -- Migrar dados de TotalDocumentos se existir
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'TotalDocumentos')
+    BEGIN
+        EXEC sp_rename 'Lotes.TotalDocumentos', 'QuantidadeDocumentos', 'COLUMN';
+        PRINT 'Lotes.TotalDocumentos renomeado para QuantidadeDocumentos.';
+    END
     ELSE
-        ALTER TABLE Documentos ADD ConfiancaOcr FLOAT NOT NULL DEFAULT 0.0;
-    PRINT 'Coluna ConfiancaOcr configurada em Documentos.';
+    BEGIN
+        ALTER TABLE Lotes ADD QuantidadeDocumentos INT NOT NULL DEFAULT 0;
+        PRINT 'Coluna QuantidadeDocumentos adicionada a Lotes.';
+    END
 END
-ELSE PRINT 'Coluna ConfiancaOcr ja existe em Documentos.';
+ELSE PRINT 'Lotes.QuantidadeDocumentos ja existe.';
 GO
 
--- ReviewAgentScore: Score de revisao do agente Extend (1-5)
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ReviewAgentScore')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'QuantidadeEnviadosExtend')
 BEGIN
-    ALTER TABLE Documentos ADD ReviewAgentScore INT NULL;
-    PRINT 'Coluna ReviewAgentScore adicionada a Documentos.';
+    ALTER TABLE Lotes ADD QuantidadeEnviadosExtend INT NOT NULL DEFAULT 0;
+    PRINT 'Coluna QuantidadeEnviadosExtend adicionada a Lotes.';
 END
-ELSE PRINT 'Coluna ReviewAgentScore ja existe em Documentos.';
+ELSE PRINT 'Lotes.QuantidadeEnviadosExtend ja existe.';
 GO
 
--- OrigemSuspeita: Indica que o documento tem itens ancorados em paginas impressas posteriores
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'OrigemSuspeita')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'QuantidadeProcessados')
 BEGIN
-    ALTER TABLE Documentos ADD OrigemSuspeita BIT NOT NULL DEFAULT 0;
-    PRINT 'Coluna OrigemSuspeita adicionada a Documentos.';
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'DocumentosProcessados')
+    BEGIN
+        EXEC sp_rename 'Lotes.DocumentosProcessados', 'QuantidadeProcessados', 'COLUMN';
+        PRINT 'Lotes.DocumentosProcessados renomeado para QuantidadeProcessados.';
+    END
+    ELSE
+    BEGIN
+        ALTER TABLE Lotes ADD QuantidadeProcessados INT NOT NULL DEFAULT 0;
+        PRINT 'Coluna QuantidadeProcessados adicionada a Lotes.';
+    END
 END
-ELSE PRINT 'Coluna OrigemSuspeita ja existe em Documentos.';
+ELSE PRINT 'Lotes.QuantidadeProcessados ja existe.';
 GO
 
--- RevisaoHumanaNecessaria: Indica que o documento requer revisao humana obrigatoria
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'RevisaoHumanaNecessaria')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'QuantidadeDivergencias')
 BEGIN
-    ALTER TABLE Documentos ADD RevisaoHumanaNecessaria BIT NOT NULL DEFAULT 0;
-    PRINT 'Coluna RevisaoHumanaNecessaria adicionada a Documentos.';
+    ALTER TABLE Lotes ADD QuantidadeDivergencias INT NOT NULL DEFAULT 0;
+    PRINT 'Coluna QuantidadeDivergencias adicionada a Lotes.';
 END
-ELSE PRINT 'Coluna RevisaoHumanaNecessaria ja existe em Documentos.';
+ELSE PRINT 'Lotes.QuantidadeDivergencias ja existe.';
 GO
 
--- AtendimentoAgrupadoId: FK para AtendimentosAgrupados
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'AtendimentoAgrupadoId')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'QuantidadeRevisaoHumana')
 BEGIN
-    ALTER TABLE Documentos ADD AtendimentoAgrupadoId INT NULL;
-    ALTER TABLE Documentos ADD CONSTRAINT FK_Documentos_Atendimentos
-        FOREIGN KEY (AtendimentoAgrupadoId)
-        REFERENCES AtendimentosAgrupados(Id) ON DELETE NO ACTION;
-    PRINT 'Coluna AtendimentoAgrupadoId adicionada a Documentos.';
+    ALTER TABLE Lotes ADD QuantidadeRevisaoHumana INT NOT NULL DEFAULT 0;
+    PRINT 'Coluna QuantidadeRevisaoHumana adicionada a Lotes.';
 END
-ELSE PRINT 'Coluna AtendimentoAgrupadoId ja existe em Documentos.';
+ELSE PRINT 'Lotes.QuantidadeRevisaoHumana ja existe.';
+GO
+
+-- Renomear DataInicioProcessamento se houver typo antigo
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'DataInicioProcesamento')
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'DataInicioProcessamento')
+    BEGIN
+        EXEC sp_rename 'Lotes.DataInicioProcesamento', 'DataInicioProcessamento', 'COLUMN';
+        PRINT 'Lotes.DataInicioProcesamento renomeado para DataInicioProcessamento.';
+    END
+END
 GO
 
 -- ============================================================
--- Tabela: AtendimentosAgrupados - Adicionar colunas faltantes
+-- Tabela: AtendimentosAgrupados
 -- ============================================================
 
--- NumeroCarteira: Chave de agrupamento (numero_carteira do paciente)
+-- NumeroCarteira: COLUNA CRITICA - chave de agrupamento por paciente
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'NumeroCarteira')
 BEGIN
-    ALTER TABLE AtendimentosAgrupados ADD NumeroCarteira NVARCHAR(50) NULL;
+    ALTER TABLE AtendimentosAgrupados ADD NumeroCarteira NVARCHAR(100) NULL;
     PRINT 'Coluna NumeroCarteira adicionada a AtendimentosAgrupados.';
 END
-ELSE PRINT 'Coluna NumeroCarteira ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.NumeroCarteira ja existe.';
 GO
 
--- CrmMedico: CRM do medico solicitante
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'CrmMedico')
 BEGIN
     ALTER TABLE AtendimentosAgrupados ADD CrmMedico NVARCHAR(50) NULL;
     PRINT 'Coluna CrmMedico adicionada a AtendimentosAgrupados.';
 END
-ELSE PRINT 'Coluna CrmMedico ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.CrmMedico ja existe.';
 GO
 
--- QuantidadeDocumentos: Contador de documentos no agrupamento
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'QuantidadeDocumentos')
 BEGIN
-    -- Migrar dados de TotalDocumentos se existir
     IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'TotalDocumentos')
     BEGIN
-        ALTER TABLE AtendimentosAgrupados ADD QuantidadeDocumentos INT NOT NULL DEFAULT 0;
-        UPDATE AtendimentosAgrupados SET QuantidadeDocumentos = TotalDocumentos;
-        PRINT 'Coluna QuantidadeDocumentos adicionada e dados migrados de TotalDocumentos.';
+        EXEC sp_rename 'AtendimentosAgrupados.TotalDocumentos', 'QuantidadeDocumentos', 'COLUMN';
+        PRINT 'AtendimentosAgrupados.TotalDocumentos renomeado para QuantidadeDocumentos.';
     END
     ELSE
     BEGIN
@@ -137,17 +117,15 @@ BEGIN
         PRINT 'Coluna QuantidadeDocumentos adicionada a AtendimentosAgrupados.';
     END
 END
-ELSE PRINT 'Coluna QuantidadeDocumentos ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.QuantidadeDocumentos ja existe.';
 GO
 
--- QuantidadeDivergencias: Contador de divergencias no agrupamento
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'QuantidadeDivergencias')
 BEGIN
     IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'TotalDivergencias')
     BEGIN
-        ALTER TABLE AtendimentosAgrupados ADD QuantidadeDivergencias INT NOT NULL DEFAULT 0;
-        UPDATE AtendimentosAgrupados SET QuantidadeDivergencias = TotalDivergencias;
-        PRINT 'Coluna QuantidadeDivergencias adicionada e dados migrados de TotalDivergencias.';
+        EXEC sp_rename 'AtendimentosAgrupados.TotalDivergencias', 'QuantidadeDivergencias', 'COLUMN';
+        PRINT 'AtendimentosAgrupados.TotalDivergencias renomeado para QuantidadeDivergencias.';
     END
     ELSE
     BEGIN
@@ -155,89 +133,151 @@ BEGIN
         PRINT 'Coluna QuantidadeDivergencias adicionada a AtendimentosAgrupados.';
     END
 END
-ELSE PRINT 'Coluna QuantidadeDivergencias ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.QuantidadeDivergencias ja existe.';
 GO
 
--- QuantidadeRevisaoHumana: Contador de itens que precisam de revisao humana
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'QuantidadeRevisaoHumana')
 BEGIN
     ALTER TABLE AtendimentosAgrupados ADD QuantidadeRevisaoHumana INT NOT NULL DEFAULT 0;
     PRINT 'Coluna QuantidadeRevisaoHumana adicionada a AtendimentosAgrupados.';
 END
-ELSE PRINT 'Coluna QuantidadeRevisaoHumana ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.QuantidadeRevisaoHumana ja existe.';
 GO
 
--- ScoreRisco: Score de risco de 0 a 100 calculado pela Regra G
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'ScoreRisco')
 BEGIN
     ALTER TABLE AtendimentosAgrupados ADD ScoreRisco FLOAT NOT NULL DEFAULT 0.0;
     PRINT 'Coluna ScoreRisco adicionada a AtendimentosAgrupados.';
 END
-ELSE PRINT 'Coluna ScoreRisco ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.ScoreRisco ja existe.';
 GO
 
--- RevisaoHumanaNecessaria: Flag que indica necessidade de revisao humana
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('AtendimentosAgrupados') AND name = 'RevisaoHumanaNecessaria')
 BEGIN
     ALTER TABLE AtendimentosAgrupados ADD RevisaoHumanaNecessaria BIT NOT NULL DEFAULT 0;
     PRINT 'Coluna RevisaoHumanaNecessaria adicionada a AtendimentosAgrupados.';
 END
-ELSE PRINT 'Coluna RevisaoHumanaNecessaria ja existe em AtendimentosAgrupados.';
+ELSE PRINT 'AtendimentosAgrupados.RevisaoHumanaNecessaria ja existe.';
 GO
 
 -- ============================================================
--- Tabela: Lotes - Adicionar colunas faltantes
+-- Tabela: Documentos
 -- ============================================================
 
--- EnviadosExtend: Contador de documentos enviados ao Extend
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'EnviadosExtend')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtendFileId')
 BEGIN
-    ALTER TABLE Lotes ADD EnviadosExtend INT NOT NULL DEFAULT 0;
-    PRINT 'Coluna EnviadosExtend adicionada a Lotes.';
+    ALTER TABLE Documentos ADD ExtendFileId NVARCHAR(200) NULL;
+    PRINT 'Coluna ExtendFileId adicionada a Documentos.';
 END
-ELSE PRINT 'Coluna EnviadosExtend ja existe em Lotes.';
+ELSE PRINT 'Documentos.ExtendFileId ja existe.';
 GO
 
--- TotalDivergencias: Contador total de divergencias no lote
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'TotalDivergencias')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtendRunId')
 BEGIN
-    ALTER TABLE Lotes ADD TotalDivergencias INT NOT NULL DEFAULT 0;
-    PRINT 'Coluna TotalDivergencias adicionada a Lotes.';
+    ALTER TABLE Documentos ADD ExtendRunId NVARCHAR(200) NULL;
+    PRINT 'Coluna ExtendRunId adicionada a Documentos.';
 END
-ELSE PRINT 'Coluna TotalDivergencias ja existe em Lotes.';
+ELSE PRINT 'Documentos.ExtendRunId ja existe.';
 GO
 
--- TotalRevisaoHumana: Contador de documentos que precisam de revisao humana
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Lotes') AND name = 'TotalRevisaoHumana')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ExtractorId')
 BEGIN
-    ALTER TABLE Lotes ADD TotalRevisaoHumana INT NOT NULL DEFAULT 0;
-    PRINT 'Coluna TotalRevisaoHumana adicionada a Lotes.';
+    ALTER TABLE Documentos ADD ExtractorId NVARCHAR(200) NULL;
+    PRINT 'Coluna ExtractorId adicionada a Documentos.';
 END
-ELSE PRINT 'Coluna TotalRevisaoHumana ja existe em Lotes.';
+ELSE PRINT 'Documentos.ExtractorId ja existe.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'DadosExtraidos')
+BEGIN
+    ALTER TABLE Documentos ADD DadosExtraidos NVARCHAR(MAX) NULL;
+    PRINT 'Coluna DadosExtraidos adicionada a Documentos.';
+END
+ELSE PRINT 'Documentos.DadosExtraidos ja existe.';
+GO
+
+-- ConfiancaOcr: renomear ConfiancaOCR (nome antigo) se necessario
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ConfiancaOcr')
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ConfiancaOCR')
+    BEGIN
+        EXEC sp_rename 'Documentos.ConfiancaOCR', 'ConfiancaOcr', 'COLUMN';
+        PRINT 'Documentos.ConfiancaOCR renomeado para ConfiancaOcr.';
+    END
+    ELSE
+    BEGIN
+        ALTER TABLE Documentos ADD ConfiancaOcr FLOAT NOT NULL DEFAULT 0.0;
+        PRINT 'Coluna ConfiancaOcr adicionada a Documentos.';
+    END
+END
+ELSE PRINT 'Documentos.ConfiancaOcr ja existe.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'ReviewAgentScore')
+BEGIN
+    ALTER TABLE Documentos ADD ReviewAgentScore INT NULL;
+    PRINT 'Coluna ReviewAgentScore adicionada a Documentos.';
+END
+ELSE PRINT 'Documentos.ReviewAgentScore ja existe.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'OrigemSuspeita')
+BEGIN
+    ALTER TABLE Documentos ADD OrigemSuspeita BIT NOT NULL DEFAULT 0;
+    PRINT 'Coluna OrigemSuspeita adicionada a Documentos.';
+END
+ELSE PRINT 'Documentos.OrigemSuspeita ja existe.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'RevisaoHumanaNecessaria')
+BEGIN
+    ALTER TABLE Documentos ADD RevisaoHumanaNecessaria BIT NOT NULL DEFAULT 0;
+    PRINT 'Coluna RevisaoHumanaNecessaria adicionada a Documentos.';
+END
+ELSE PRINT 'Documentos.RevisaoHumanaNecessaria ja existe.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Documentos') AND name = 'AtendimentoAgrupadoId')
+BEGIN
+    ALTER TABLE Documentos ADD AtendimentoAgrupadoId INT NULL;
+    -- Adicionar FK somente se AtendimentosAgrupados existir
+    IF OBJECT_ID('AtendimentosAgrupados') IS NOT NULL
+    BEGIN
+        ALTER TABLE Documentos ADD CONSTRAINT FK_Documentos_AtendimentosAgrupados
+            FOREIGN KEY (AtendimentoAgrupadoId)
+            REFERENCES AtendimentosAgrupados(Id) ON DELETE NO ACTION;
+        PRINT 'FK FK_Documentos_AtendimentosAgrupados criada.';
+    END
+    PRINT 'Coluna AtendimentoAgrupadoId adicionada a Documentos.';
+END
+ELSE PRINT 'Documentos.AtendimentoAgrupadoId ja existe.';
 GO
 
 -- ============================================================
--- Indices adicionais para performance
+-- Indices adicionais (idempotentes)
 -- ============================================================
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Documentos_ExtendRunId')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Documentos_ExtendRunId' AND object_id = OBJECT_ID('Documentos'))
 BEGIN
     CREATE INDEX IX_Documentos_ExtendRunId ON Documentos(ExtendRunId);
     PRINT 'Indice IX_Documentos_ExtendRunId criado.';
 END
-ELSE PRINT 'Indice IX_Documentos_ExtendRunId ja existe.';
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AtendimentosAgrupados_LoteId_NumeroCarteira')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AtendimentosAgrupados_NumeroCarteira' AND object_id = OBJECT_ID('AtendimentosAgrupados'))
 BEGIN
-    CREATE INDEX IX_AtendimentosAgrupados_LoteId_NumeroCarteira
+    CREATE INDEX IX_AtendimentosAgrupados_NumeroCarteira
         ON AtendimentosAgrupados(LoteId, NumeroCarteira);
-    PRINT 'Indice IX_AtendimentosAgrupados_LoteId_NumeroCarteira criado.';
+    PRINT 'Indice IX_AtendimentosAgrupados_NumeroCarteira criado.';
 END
-ELSE PRINT 'Indice IX_AtendimentosAgrupados_LoteId_NumeroCarteira ja existe.';
 GO
 
-PRINT '==========================================================';
-PRINT '04_AlterTables_AddMissingColumns.sql concluido com sucesso!';
-PRINT '==========================================================';
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Documentos_AtendimentoAgrupadoId' AND object_id = OBJECT_ID('Documentos'))
+BEGIN
+    CREATE INDEX IX_Documentos_AtendimentoAgrupadoId ON Documentos(AtendimentoAgrupadoId);
+    PRINT 'Indice IX_Documentos_AtendimentoAgrupadoId criado.';
+END
+GO
+
+PRINT '=== Migracao 04_AlterTables_AddMissingColumns concluida com sucesso! ===';
 GO

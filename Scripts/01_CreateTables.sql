@@ -57,6 +57,9 @@ CREATE TABLE [dbo].[AtendimentosAgrupados]
     [Id]                          INT IDENTITY(1,1) NOT NULL,
     [LoteId]                      INT NOT NULL,
 
+    -- Chave de agrupamento: numero_carteira do paciente (ou nome como fallback)
+    [NumeroCarteira]              NVARCHAR(100) NULL,
+
     [NomePaciente]                NVARCHAR(200) NULL,
     [NomeMedico]                  NVARCHAR(200) NULL,
     [CrmMedico]                   NVARCHAR(50) NULL,
@@ -183,6 +186,7 @@ CREATE INDEX [IX_Lotes_Status] ON [dbo].[Lotes]([Status]);
 CREATE INDEX [IX_Lotes_DataCriacao] ON [dbo].[Lotes]([DataCriacao] DESC);
 
 CREATE INDEX [IX_AtendimentosAgrupados_LoteId] ON [dbo].[AtendimentosAgrupados]([LoteId]);
+CREATE INDEX [IX_AtendimentosAgrupados_NumeroCarteira] ON [dbo].[AtendimentosAgrupados]([LoteId], [NumeroCarteira]);
 CREATE INDEX [IX_AtendimentosAgrupados_NumeroGuia] ON [dbo].[AtendimentosAgrupados]([NumeroGuia]);
 CREATE INDEX [IX_AtendimentosAgrupados_NumeroPedido] ON [dbo].[AtendimentosAgrupados]([NumeroPedido]);
 CREATE INDEX [IX_AtendimentosAgrupados_DataAtendimento] ON [dbo].[AtendimentosAgrupados]([DataAtendimento]);
