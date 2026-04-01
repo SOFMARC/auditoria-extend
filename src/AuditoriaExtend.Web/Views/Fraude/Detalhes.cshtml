@@ -1,0 +1,558 @@
+@model AuditoriaExtend.Domain.Entities.ResultadoFraudeAnalise?
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Detalhes da Análise Antifraude";
+    var lote = ViewBag.Lote as AuditoriaExtend.Application.DTOs.LoteDto;
+
+    // Parse do JSON completo para exibição detalhada
+    JsonElement? jsonRoot = null;
+    if (Model?.ResultadoJson != null)
+    {
+        try { jsonRoot = JsonDocument.Parse(Model.ResultadoJson).RootElement; } catch { }
+    }
+
+    string GetStr(string name) =>
+        jsonRoot.HasValue && jsonRoot.Value.TryGetProperty(name, out var p) ? p.GetString() ?? "" : "";
+
+    var statusAuditoria = GetStr("status_auditoria");
+    var nivelRisco      = GetStr("nivel_risco");
+    var resumo          = GetStr("resumo");
+    var recomendacao    = GetStr("recomendacao_final");
+
+    var statusClass = statusAuditoria switch
+    {
+        "aprovado"                   => "success",
+        "aprovado_com_ressalvas"     => "warning",
+        "reter_para_analise_manual"  => "orange",
+        "bloquear_para_auditoria"    => "danger",
+        _                            => "secondary"
+    };
+    var statusLabel = statusAuditoria switch
+    {
+        "aprovado"                   => "Aprovado",
+        "aprovado_com_ressalvas"     => "Aprovado com Ressalvas",
+        "reter_para_analise_manual"  => "Reter para Análise Manual",
+        "bloquear_para_auditoria"    => "Bloqueado para Auditoria",
+        _                            => statusAuditoria
+    };
+
+    var riscoClass = nivelRisco switch
+    {
+        "baixo"    => "success",
+        "moderado" => "info",
+        "alto"     => "warning",
+        "critico"  => "danger",
+        _          => "secondary"
+    };
+    var riscoLabel = nivelRisco switch
+    {
+        "baixo"    => "Baixo",
+        "moderado" => "Moderado",
+        "alto"     => "Alto",
+        "critico"  => "Crítico",
+        _          => nivelRisco
+    };
+
+    // Lote info
+    JsonElement loteInfoEl = default;
+    if (jsonRoot.HasValue) jsonRoot.Value.TryGetProperty("lote", out loteInfoEl);
+
+    string LoteStr(string k) => loteInfoEl.ValueKind == JsonValueKind.Object && loteInfoEl.TryGetProperty(k, out var v) ? v.GetString() ?? "—" : "—";
+    int LoteInt(string k) => loteInfoEl.ValueKind == JsonValueKind.Object && loteInfoEl.TryGetProperty(k, out var v) && v.TryGetInt32(out var i) ? i : 0;
+
+    var guiasAnalisadas = loteInfoEl.ValueKind == JsonValueKind.Object
+        && loteInfoEl.TryGetProperty("guias_analisadas", out var ga) && ga.ValueKind == JsonValueKind.Array
+        ? ga.EnumerateArray().Select(x => x.GetString()).Where(s => s != null).ToList()
+        : new List<string?>();
+
+    // Cobertura
+    JsonElement coberturaEl = default;
+    if (jsonRoot.HasValue) jsonRoot.Value.TryGetProperty("cobertura_pedido", out coberturaEl);
+
+    List<string> GetStrList(JsonElement el, string key) =>
+        el.ValueKind == JsonValueKind.Object && el.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array
+            ? arr.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+            : new List<string>();
+
+    var cobertos    = GetStrList(coberturaEl, "itens_cobertos");
+    var parcial     = GetStrList(coberturaEl, "itens_cobertura_parcial");
+    var naoCobertos = GetStrList(coberturaEl, "itens_nao_cobertos");
+    var semLastro   = GetStrList(coberturaEl, "itens_realizados_sem_lastro");
+
+    // Financeiro
+    JsonElement finEl = default;
+    if (jsonRoot.HasValue) jsonRoot.Value.TryGetProperty("validacoes_financeiras", out finEl);
+
+    bool? GetBool(JsonElement el, string key) =>
+        el.ValueKind == JsonValueKind.Object && el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True ? true
+        : el.ValueKind == JsonValueKind.Object && el.TryGetProperty(key, out v) && v.ValueKind == JsonValueKind.False ? false
+        : null;
+
+    var somaConf = GetBool(finEl, "soma_itens_confere_total_procedimentos");
+    var compConf = GetBool(finEl, "composicao_total_geral_confere");
+
+    var achadosFin = finEl.ValueKind == JsonValueKind.Object
+        && finEl.TryGetProperty("achados_financeiros", out var af) && af.ValueKind == JsonValueKind.Array
+        ? af.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+        : new List<string>();
+
+    // Documental
+    JsonElement docEl = default;
+    if (jsonRoot.HasValue) jsonRoot.Value.TryGetProperty("validacoes_documentais", out docEl);
+
+    bool? GetDocBool(string key) => GetBool(docEl, key);
+
+    var camposDoc = new[]
+    {
+        ("paciente_coerente", "Paciente coerente entre documentos", false),
+        ("medico_coerente", "Médico coerente entre documentos", false),
+        ("assinatura_medico_presente", "Assinatura do médico presente", false),
+        ("carimbo_medico_presente", "Carimbo do médico presente", false),
+        ("assinatura_beneficiario_presente_em_todas_guias", "Assinatura do beneficiário em todas as guias", false),
+        ("legibilidade_reduz_confianca", "Baixa legibilidade reduz confiança", true), // true = invertido (true é ruim)
+    };
+
+    // Achados
+    JsonElement achadosEl = default;
+    if (jsonRoot.HasValue) jsonRoot.Value.TryGetProperty("achados", out achadosEl);
+
+    var score = Model?.ScoreRisco ?? 0;
+    var scoreColor = score >= 70 ? "danger" : score >= 40 ? "warning" : score >= 20 ? "info" : "success";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="/Fraude">Análise Antifraude</a></li>
+                <li class="breadcrumb-item active">Lote #@lote?.Id</li>
+            </ol>
+        </nav>
+        <h2 class="mb-0"><i class="fas fa-shield-alt me-2 text-primary"></i>Análise Antifraude — @lote?.NomeArquivo</h2>
+    </div>
+    <a href="/Fraude" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Voltar
+    </a>
+</div>
+
+@if (Model == null)
+{
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhuma análise antifraude foi realizada para este lote ainda.
+        @if (lote != null)
+        {
+            <a href="/Importacao/Detalhes/@lote.Id" class="alert-link ms-2">Ver detalhes do lote</a>
+        }
+    </div>
+}
+else if (Model.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Erro)
+{
+    <div class="alert alert-danger">
+        <i class="fas fa-times-circle me-2"></i>
+        <strong>Erro na análise:</strong> @Model.MensagemErro
+    </div>
+}
+else if (Model.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Processando)
+{
+    <div class="alert alert-info">
+        <i class="fas fa-spinner fa-spin me-2"></i>
+        Análise em andamento. Aguarde e recarregue a página.
+    </div>
+}
+else
+{
+    <!-- Cabeçalho de resultado -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="mb-2">
+                        <span class="badge fs-6 px-3 py-2"
+                              style="background-color: @(statusClass == "orange" ? "#fd7e14" : $"var(--bs-{statusClass})")">
+                            @statusLabel
+                        </span>
+                    </div>
+                    <div class="text-muted small">Status da Auditoria</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-5 fw-bold text-@scoreColor">@score</div>
+                    <div class="progress mt-2" style="height:6px">
+                        <div class="progress-bar bg-@scoreColor" style="width:@score%"></div>
+                    </div>
+                    <div class="text-muted small mt-1">Score de Risco (0–100)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="mb-2">
+                        <span class="badge bg-@riscoClass fs-6 px-3 py-2">@riscoLabel</span>
+                    </div>
+                    <div class="text-muted small">Nível de Risco</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-5 fw-bold @(Model.QuantidadeAchados > 0 ? "text-warning" : "text-success")">
+                        @Model.QuantidadeAchados
+                    </div>
+                    <div class="text-muted small mt-1">Achados Identificados</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo e Recomendação -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="fas fa-file-alt me-2 text-primary"></i>Resumo da Análise</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">@resumo</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="fas fa-lightbulb me-2 text-warning"></i>Recomendação Final</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">@recomendacao</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informações do Lote (da análise) -->
+    @if (loteInfoEl.ValueKind == JsonValueKind.Object)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-info"></i>Dados do Atendimento Identificados pela IA</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-3"><small class="text-muted d-block">Paciente</small><strong>@LoteStr("paciente")</strong></div>
+                    <div class="col-md-3"><small class="text-muted d-block">Nº Carteira</small><strong>@LoteStr("numero_carteira")</strong></div>
+                    <div class="col-md-3"><small class="text-muted d-block">Médico</small><strong>@LoteStr("medico")</strong></div>
+                    <div class="col-md-3"><small class="text-muted d-block">CRM</small><strong>@LoteStr("crm_ou_conselho")</strong></div>
+                    <div class="col-md-3"><small class="text-muted d-block">Data do Pedido</small><strong>@LoteStr("data_pedido")</strong></div>
+                    <div class="col-md-3"><small class="text-muted d-block">Guias Analisadas</small><strong>@LoteInt("quantidade_guias")</strong></div>
+                </div>
+                @if (guiasAnalisadas.Any())
+                {
+                    <div class="mt-2">
+                        <small class="text-muted d-block mb-1">Guias:</small>
+                        @foreach (var guia in guiasAnalisadas)
+                        {
+                            <span class="badge bg-light text-dark border me-1 mb-1">@guia</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Cobertura do Pedido -->
+    @if (coberturaEl.ValueKind == JsonValueKind.Object)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-clipboard-check me-2 text-success"></i>Cobertura do Pedido Médico</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="p-3 bg-success bg-opacity-10 rounded h-100">
+                            <div class="fw-semibold text-success mb-2">
+                                <i class="fas fa-check-circle me-1"></i>Cobertos (@cobertos.Count)
+                            </div>
+                            @foreach (var item in cobertos)
+                            {
+                                <div class="small">@item</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-warning bg-opacity-10 rounded h-100">
+                            <div class="fw-semibold text-warning mb-2">
+                                <i class="fas fa-exclamation-circle me-1"></i>Cobertura Parcial (@parcial.Count)
+                            </div>
+                            @foreach (var item in parcial)
+                            {
+                                <div class="small">@item</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-danger bg-opacity-10 rounded h-100">
+                            <div class="fw-semibold text-danger mb-2">
+                                <i class="fas fa-times-circle me-1"></i>Não Cobertos (@naoCobertos.Count)
+                            </div>
+                            @if (naoCobertos.Any())
+                            {
+                                @foreach (var item in naoCobertos)
+                                {
+                                    <div class="small">@item</div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="small text-muted">Nenhum</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-danger bg-opacity-10 rounded h-100">
+                            <div class="fw-semibold text-danger mb-2">
+                                <i class="fas fa-ban me-1"></i>Realizados Sem Lastro (@semLastro.Count)
+                            </div>
+                            @if (semLastro.Any())
+                            {
+                                @foreach (var item in semLastro)
+                                {
+                                    <div class="small">@item</div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="small text-muted">Nenhum</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Validações Financeiras -->
+    @if (finEl.ValueKind == JsonValueKind.Object)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-dollar-sign me-2 text-warning"></i>Validações Financeiras</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center gap-2">
+                            @if (somaConf == true)
+                            {
+                                <i class="fas fa-check-circle text-success fs-5"></i>
+                            }
+                            else if (somaConf == false)
+                            {
+                                <i class="fas fa-times-circle text-danger fs-5"></i>
+                            }
+                            else
+                            {
+                                <i class="fas fa-question-circle text-secondary fs-5"></i>
+                            }
+                            <span>Soma dos itens confere com total de procedimentos</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center gap-2">
+                            @if (compConf == true)
+                            {
+                                <i class="fas fa-check-circle text-success fs-5"></i>
+                            }
+                            else if (compConf == false)
+                            {
+                                <i class="fas fa-times-circle text-danger fs-5"></i>
+                            }
+                            else
+                            {
+                                <i class="fas fa-question-circle text-secondary fs-5"></i>
+                            }
+                            <span>Composição do total geral confere</span>
+                        </div>
+                    </div>
+                </div>
+                @if (achadosFin.Any())
+                {
+                    <ul class="mb-0">
+                        @foreach (var achado in achadosFin)
+                        {
+                            <li class="small">@achado</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Validações Documentais -->
+    @if (docEl.ValueKind == JsonValueKind.Object)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-file-signature me-2 text-info"></i>Validações Documentais</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    @foreach (var (key, label, invertido) in camposDoc)
+                    {
+                        var val = GetDocBool(key);
+                        var isPositive = invertido ? val == false : val == true;
+                        var isNegative = invertido ? val == true : val == false;
+                        <div class="col-md-6 col-lg-4">
+                            <div class="d-flex align-items-center gap-2">
+                                @if (val == null)
+                                {
+                                    <i class="fas fa-question-circle text-secondary"></i>
+                                }
+                                else if (isPositive)
+                                {
+                                    <i class="fas fa-check-circle text-success"></i>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-times-circle text-danger"></i>
+                                }
+                                <span class="small">@label</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Achados -->
+    @if (achadosEl.ValueKind == JsonValueKind.Array && achadosEl.GetArrayLength() > 0)
+    {
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">
+                    <i class="fas fa-exclamation-triangle me-2 text-warning"></i>
+                    Achados da Análise (@achadosEl.GetArrayLength())
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Regra</th>
+                                <th>Título</th>
+                                <th>Severidade</th>
+                                <th>Confiança</th>
+                                <th>Guia</th>
+                                <th>Evidência</th>
+                                <th>Ação Sugerida</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var achado in achadosEl.EnumerateArray())
+                            {
+                                var aRegra    = achado.TryGetProperty("regra",          out var r1) ? r1.GetString() ?? "" : "";
+                                var aTitulo   = achado.TryGetProperty("titulo",         out var r2) ? r2.GetString() ?? "" : "";
+                                var aSev      = achado.TryGetProperty("severidade",     out var r3) ? r3.GetString() ?? "" : "";
+                                var aGuia     = achado.TryGetProperty("guia_relacionada", out var r4) ? r4.GetString() ?? "" : "";
+                                var aEvidencia= achado.TryGetProperty("evidencia",      out var r5) ? r5.GetString() ?? "" : "";
+                                var aAcao     = achado.TryGetProperty("acao_sugerida",  out var r6) ? r6.GetString() ?? "" : "";
+                                var aConf     = achado.TryGetProperty("confianca",      out var r7) && r7.TryGetDouble(out var cd) ? cd : 0.0;
+
+                                var sevClass = aSev switch
+                                {
+                                    "critica" => "danger",
+                                    "alta"    => "warning",
+                                    "media"   => "info",
+                                    "baixa"   => "success",
+                                    _         => "secondary"
+                                };
+                                var sevLabel = aSev switch
+                                {
+                                    "critica" => "Crítica",
+                                    "alta"    => "Alta",
+                                    "media"   => "Média",
+                                    "baixa"   => "Baixa",
+                                    _         => aSev
+                                };
+                                var confPct  = (int)(aConf * 100);
+                                var confColor = aConf >= 0.8 ? "success" : aConf >= 0.6 ? "warning" : "danger";
+
+                                <tr>
+                                    <td><code class="small">@aRegra</code></td>
+                                    <td class="fw-semibold">@aTitulo</td>
+                                    <td><span class="badge bg-@sevClass">@sevLabel</span></td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <div class="progress" style="width:50px;height:6px">
+                                                <div class="progress-bar bg-@confColor" style="width:@confPct%"></div>
+                                            </div>
+                                            <small>@confPct%</small>
+                                        </div>
+                                    </td>
+                                    <td><small class="text-muted">@aGuia</small></td>
+                                    <td><small>@aEvidencia</small></td>
+                                    <td><small class="text-muted fst-italic">@aAcao</small></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- JSON Bruto (colapsável) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <button class="btn btn-link p-0 text-decoration-none" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#jsonBruto">
+                <i class="fas fa-code me-2"></i>JSON Completo da Análise
+                <i class="fas fa-chevron-down ms-2 small"></i>
+            </button>
+        </div>
+        <div class="collapse" id="jsonBruto">
+            <div class="card-body p-0">
+                <div class="d-flex justify-content-end p-2 border-bottom">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copiarJson()">
+                        <i class="fas fa-copy me-1"></i>Copiar JSON
+                    </button>
+                </div>
+                <pre id="jsonContent" class="p-3 mb-0 bg-light" style="max-height:400px;overflow:auto;font-size:0.8rem">@Model?.ResultadoJson</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <a href="/Fraude" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Voltar ao Dashboard
+        </a>
+        @if (lote != null)
+        {
+            <a href="/Importacao/Detalhes/@lote.Id" class="btn btn-outline-primary">
+                <i class="fas fa-file-alt me-1"></i>Ver Documentos do Lote
+            </a>
+        }
+    </div>
+}
+
+@section Scripts {
+<script>
+function copiarJson() {
+    const text = document.getElementById('jsonContent').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target.closest('button');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>Copiado!';
+        btn.classList.replace('btn-outline-secondary', 'btn-success');
+        setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('btn-success', 'btn-outline-secondary'); }, 2000);
+    });
+}
+</script>
+}

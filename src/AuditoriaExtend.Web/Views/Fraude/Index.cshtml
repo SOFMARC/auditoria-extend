@@ -1,0 +1,236 @@
+@model IEnumerable<(AuditoriaExtend.Application.DTOs.LoteDto Lote, AuditoriaExtend.Domain.Entities.ResultadoFraudeAnalise? Resultado, bool Elegivel)>
+@{
+    ViewData["Title"] = "Análise Antifraude";
+    var totalAnalisados = Model.Count(x => x.Resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Concluido);
+    var totalPendentes  = Model.Count(x => x.Elegivel);
+    var totalErro       = Model.Count(x => x.Resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Erro);
+    var totalBloqueados = Model.Count(x => x.Resultado?.StatusAuditoria == "bloquear_para_auditoria");
+    var totalReter      = Model.Count(x => x.Resultado?.StatusAuditoria == "reter_para_analise_manual");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1"><i class="fas fa-shield-alt me-2 text-primary"></i>Análise Antifraude</h2>
+        <p class="text-muted mb-0">Resultados da análise antifraude via IA para cada lote processado</p>
+    </div>
+</div>
+
+<!-- Cards de resumo -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="display-6 fw-bold text-success">@totalAnalisados</div>
+                <div class="text-muted small mt-1"><i class="fas fa-check-circle me-1"></i>Analisados</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="display-6 fw-bold text-warning">@totalPendentes</div>
+                <div class="text-muted small mt-1"><i class="fas fa-clock me-1"></i>Aguardando Análise</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="display-6 fw-bold text-danger">@totalBloqueados</div>
+                <div class="text-muted small mt-1"><i class="fas fa-ban me-1"></i>Bloqueados p/ Auditoria</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="display-6 fw-bold text-orange" style="color:#fd7e14">@totalReter</div>
+                <div class="text-muted small mt-1"><i class="fas fa-pause-circle me-1"></i>Reter p/ Análise Manual</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabela de lotes -->
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Lotes</h5>
+        <span class="badge bg-secondary">@Model.Count() lotes</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Arquivo</th>
+                        <th>Status Lote</th>
+                        <th>Análise Fraude</th>
+                        <th>Score Risco</th>
+                        <th>Achados</th>
+                        <th>Data Análise</th>
+                        <th class="text-end">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (lote, resultado, elegivel) in Model)
+                    {
+                        <tr>
+                            <td class="fw-bold text-muted">@lote.Id</td>
+                            <td>
+                                <div class="fw-semibold">@lote.NomeArquivo</div>
+                                <small class="text-muted">@lote.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small>
+                            </td>
+                            <td>
+                                @{
+                                    var (statusClass, statusIcon, statusLabel) = lote.Status switch
+                                    {
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Concluido => ("success", "check-circle", "Concluído"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.AguardandoExtend => ("warning", "clock", "Aguardando"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Processando => ("info", "spinner fa-spin", "Processando"),
+                                        AuditoriaExtend.Domain.Enums.StatusLote.Erro => ("danger", "times-circle", "Erro"),
+                                        _ => ("secondary", "question-circle", lote.Status.ToString())
+                                    };
+                                }
+                                <span class="badge bg-@statusClass">
+                                    <i class="fas fa-@statusIcon me-1"></i>@statusLabel
+                                </span>
+                            </td>
+                            <td>
+                                @if (resultado == null && elegivel)
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fas fa-clock me-1"></i>Aguardando
+                                    </span>
+                                }
+                                else if (resultado == null && !elegivel)
+                                {
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-minus me-1"></i>Não elegível
+                                    </span>
+                                }
+                                else if (resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Processando)
+                                {
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-spinner fa-spin me-1"></i>Processando
+                                    </span>
+                                }
+                                else if (resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Erro)
+                                {
+                                    <span class="badge bg-danger" title="@resultado.MensagemErro">
+                                        <i class="fas fa-times-circle me-1"></i>Erro
+                                    </span>
+                                }
+                                else
+                                {
+                                    var audClass = resultado?.StatusAuditoria switch
+                                    {
+                                        "aprovado" => "success",
+                                        "aprovado_com_ressalvas" => "warning",
+                                        "reter_para_analise_manual" => "orange",
+                                        "bloquear_para_auditoria" => "danger",
+                                        _ => "secondary"
+                                    };
+                                    var audIcon = resultado?.StatusAuditoria switch
+                                    {
+                                        "aprovado" => "check-circle",
+                                        "aprovado_com_ressalvas" => "exclamation-circle",
+                                        "reter_para_analise_manual" => "pause-circle",
+                                        "bloquear_para_auditoria" => "ban",
+                                        _ => "question-circle"
+                                    };
+                                    var audLabel = resultado?.StatusAuditoria switch
+                                    {
+                                        "aprovado" => "Aprovado",
+                                        "aprovado_com_ressalvas" => "Aprovado c/ Ressalvas",
+                                        "reter_para_analise_manual" => "Reter p/ Análise",
+                                        "bloquear_para_auditoria" => "Bloqueado",
+                                        _ => resultado?.StatusAuditoria ?? "—"
+                                    };
+                                    var audStyle = audClass == "orange" ? "background-color:#fd7e14" : $"background-color:var(--bs-{audClass})";
+                                    <span class="badge" style="@audStyle">
+                                        <i class="fas fa-@audIcon me-1"></i>@audLabel
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                @if (resultado?.ScoreRisco != null)
+                                {
+                                    var score = resultado.ScoreRisco.Value;
+                                    var scoreColor = score >= 70 ? "danger" : score >= 40 ? "warning" : score >= 20 ? "info" : "success";
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress flex-grow-1" style="height:8px; min-width:60px">
+                                            <div class="progress-bar bg-@scoreColor" style="width:@score%"></div>
+                                        </div>
+                                        <span class="badge bg-@scoreColor">@score</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (resultado?.QuantidadeAchados > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">@resultado.QuantidadeAchados achado(s)</span>
+                                }
+                                else if (resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Concluido)
+                                {
+                                    <span class="badge bg-success">Nenhum</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (resultado?.DataFim != null)
+                                {
+                                    <small>@resultado.DataFim.Value.ToString("dd/MM/yyyy HH:mm")</small>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                @if (resultado?.Status == AuditoriaExtend.Domain.Enums.StatusFraudeAnalise.Concluido)
+                                {
+                                    <a href="/Fraude/Detalhes/@lote.Id"
+                                       class="btn btn-sm btn-primary" title="Ver análise completa">
+                                        <i class="fas fa-search me-1"></i>Ver Análise
+                                    </a>
+                                }
+                                else if (elegivel)
+                                {
+                                    <form method="post" action="/Fraude/AnalisarAgora/@lote.Id" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-warning text-dark" title="Executar análise agora">
+                                            <i class="fas fa-play me-1"></i>Analisar Agora
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <a href="/Importacao/Detalhes/@lote.Id"
+                                       class="btn btn-sm btn-outline-secondary" title="Ver detalhes do lote">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="text-center py-5 text-muted">
+        <i class="fas fa-shield-alt fa-3x mb-3 opacity-25"></i>
+        <p>Nenhum lote encontrado. Importe documentos para iniciar a análise antifraude.</p>
+    </div>
+}

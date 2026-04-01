@@ -236,6 +236,7 @@ Agora analise os dados recebidos seguindo exatamente essas instruções.
             DataCriacao = DateTime.UtcNow
         };
         await _repoResultado.AddAsync(resultado);
+        await _repoResultado.SaveChangesAsync(); // persiste o registro Processando
 
         try
         {
@@ -375,6 +376,7 @@ Agora analise os dados recebidos seguindo exatamente essas instruções.
             resultado.DataAtualizacao = DateTime.UtcNow;
 
             await _repoResultado.UpdateAsync(resultado);
+            await _repoResultado.SaveChangesAsync(); // persiste o resultado Concluido
             _logger.LogInformation("FraudeAnalise: lote {LoteId} analisado — status={Status} score={Score}",
                 loteId, resultado.StatusAuditoria, resultado.ScoreRisco);
         }
@@ -385,6 +387,7 @@ Agora analise os dados recebidos seguindo exatamente essas instruções.
             resultado.DataFim = DateTime.UtcNow;
             resultado.DataAtualizacao = DateTime.UtcNow;
             await _repoResultado.UpdateAsync(resultado);
+            await _repoResultado.SaveChangesAsync(); // persiste o status Erro
             _logger.LogError(ex, "FraudeAnalise: erro ao analisar lote {LoteId}", loteId);
         }
 

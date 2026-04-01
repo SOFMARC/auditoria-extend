@@ -209,7 +209,7 @@
                 @if (temArquivo)
                 {
                     <button type="button" class="btn btn-sm btn-outline-primary ms-2"
-                            onclick="onclick=" abrirDocumento('/RevisaoHumana/VisualizarDocumento?url =@Uri.EscapeDataString(Model.UrlDocumentoOriginal)', '@Model.NomeArquivoDocumento' )">
+                            onclick="abrirDocumento('@Url.Action("VisualizarDocumento", "RevisaoHumana")?url=@Uri.EscapeDataString(Model.UrlDocumentoOriginal ?? "")', '@Model.NomeArquivoDocumento')">
                         <i class="fas fa-eye me-1"></i>Ver Arquivo Original
                     </button>
                 }

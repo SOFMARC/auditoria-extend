@@ -679,21 +679,51 @@ public class AuditoriaRegraService : IAuditoriaRegraService
 
             // string numérica
             if (token.Type == JTokenType.String &&
-                double.TryParse(token.ToString(), out var valorTexto))
+                double.TryParse(token.ToString(), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var valorTexto))
                 return valorTexto;
 
-            // objeto com amount
             if (token.Type == JTokenType.Object)
             {
                 var obj = (JObject)token;
 
-                var amount = obj["amount"]?.Value<double?>();
-                if (amount.HasValue)
-                    return amount.Value;
+                // Formato normalizado do WebhookProcessorService: { "value": X, "confidence": Y }
+                // O campo "value" pode ser escalar ou objeto { "amount": N, "iso_4217_currency_code": "BRL" }
+                var valueToken = obj["value"];
+                if (valueToken != null && valueToken.Type != JTokenType.Null)
+                {
+                    // value é escalar numérico
+                    if (valueToken.Type == JTokenType.Float || valueToken.Type == JTokenType.Integer)
+                        return valueToken.Value<double>();
 
-                var value = obj["value"]?.Value<double?>();
-                if (value.HasValue)
-                    return value.Value;
+                    // value é string numérica
+                    if (valueToken.Type == JTokenType.String &&
+                        double.TryParse(valueToken.ToString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var vt))
+                        return vt;
+
+                    // value é objeto { "amount": N } (formato monetário da Extend)
+                    if (valueToken.Type == JTokenType.Object)
+                    {
+                        var innerObj = (JObject)valueToken;
+                        var amountInner = innerObj["amount"];
+                        if (amountInner != null && (amountInner.Type == JTokenType.Float || amountInner.Type == JTokenType.Integer))
+                            return amountInner.Value<double>();
+                        if (amountInner?.Type == JTokenType.String &&
+                            double.TryParse(amountInner.ToString(), System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out var amt))
+                            return amt;
+                    }
+                }
+
+                // Objeto direto com "amount" (sem wrapper value) — formato bruto da Extend
+                var directAmount = obj["amount"];
+                if (directAmount != null && (directAmount.Type == JTokenType.Float || directAmount.Type == JTokenType.Integer))
+                    return directAmount.Value<double>();
+                if (directAmount?.Type == JTokenType.String &&
+                    double.TryParse(directAmount.ToString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var da))
+                    return da;
             }
         }
 
