@@ -18,4 +18,8 @@ public interface IDivergenciaService
     Task<IEnumerable<DivergenciaAuditoriaDto>> ListarPendentesPorSeveridadeAsync(SeveridadeDivergencia? severidade = null);
     Task AtualizarStatusAsync(int id, StatusDivergencia status);
     Task<int> ContarPendentesAsync();
+
+    Task CorrigirValorExtraidoAsync(int divergenciaId, string novoValorJson);
+
+    Task AplicarCorrecaoNoJsonAsync(int divergenciaId, string novoValorJson);
 }

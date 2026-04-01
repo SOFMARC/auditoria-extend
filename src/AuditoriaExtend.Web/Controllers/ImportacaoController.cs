@@ -27,7 +27,7 @@ public class ImportacaoController : Controller
     {
         ViewBag.TotalLotes = await _loteService.ContarTotalAsync();
         ViewBag.MaxFileSize = "100 MB";
-        ViewBag.LotesRecentes = (await _loteService.ListarRecentesAsync(5)).ToList();
+        ViewBag.LotesRecentes = (await _loteService.ListarRecentesComInfosAtualizadasAsync(5)).ToList();
         return View();
     }
 

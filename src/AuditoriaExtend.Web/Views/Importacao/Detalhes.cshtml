@@ -1,3 +1,4 @@
+@using System.Text.Encodings.Web
 @using AuditoriaExtend.Application.DTOs
 @using AuditoriaExtend.Domain.Enums
 @model LoteDto
@@ -221,7 +222,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-@divBadgeCls"
                                             title="Ver @qtdTotal divergência(s) deste documento"
-                                            onclick="abrirDivergencias(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)))">
+                                            onclick="abrirDivergencias(@doc.Id, '@JavaScriptEncoder.Default.Encode(doc.NomeArquivo)')">
                                         <i class="fas fa-@divBadgeIco me-1"></i>@qtdTotal
                                     </button>
                                 }
@@ -233,7 +234,7 @@
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary"
                                                 title="Ver dados extraídos (JSON)"
-                                                onclick="abrirJson(@doc.Id, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.NomeArquivo)), @Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.DadosExtraidos ?? "{}")))">
+                                                onclick="abrirJson(@doc.Id, '@JavaScriptEncoder.Default.Encode(doc.NomeArquivo)', '@JavaScriptEncoder.Default.Encode(doc.DadosExtraidos ?? "{}")')">
                                             <i class="fas fa-code"></i>
                                         </button>
                                     }

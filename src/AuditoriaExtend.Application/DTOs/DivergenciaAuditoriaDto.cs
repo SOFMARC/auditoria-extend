@@ -47,8 +47,9 @@ public class DivergenciaAuditoriaDto
 public class RevisarDivergenciaDto
 {
     public int DivergenciaId { get; set; }
-    public string Decisao { get; set; } = string.Empty; // "Aceitar", "Rejeitar", "Corrigir"
+    public StatusDivergencia Decisao { get; set; }
     public string NomeAuditor { get; set; } = string.Empty;
-    public string? Justificativa { get; set; }
-    public string? ObservacaoCorrecao { get; set; }
+    public string alteracoesJson { get; set; }
+    public string? ObservacaoCorrecao { get; set; }    
+
 }

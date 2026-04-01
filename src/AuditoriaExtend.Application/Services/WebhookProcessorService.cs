@@ -192,10 +192,24 @@ public class WebhookProcessorService : IWebhookProcessorService
             documento.Id, dadosJson, ocrConfidenceGeral,
             documento.ExtractorId ?? string.Empty, reviewScoreGeral);
 
+        await _documentoService.AtualizarStatusAsync(documento.Id, StatusDocumento.Processado, null);
+
         // CRITICO: Cria ou atualiza AtendimentoAgrupado antes das regras cross-documento
         await AgruparDocumentoAsync(documento, dadosNormalizados);
 
-        await _auditoriaService.AuditarDocumentoAsync(documento.Id);
+        try
+        {
+            await _auditoriaService.AuditarDocumentoAsync(documento.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Erro ao auditar documento {DocumentoId} do lote {LoteId}. O processamento do lote continuará.",
+                documento.Id, documento.LoteId);
+
+            // opcional:
+            //await _documentoService.AtualizarMensagemErroAsync(documento.Id, $"Erro na auditoria: {ex.Message}");
+        }
 
         await _loteService.IncrementarProcessadosAsync(documento.LoteId);
         await VerificarConclusaoLoteAsync(documento.LoteId);

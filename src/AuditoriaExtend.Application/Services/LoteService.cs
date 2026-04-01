@@ -11,12 +11,21 @@ namespace AuditoriaExtend.Application.Services;
 public class LoteService : ILoteService
 {
     private readonly IRepository<Lote> _repo;
-    private readonly IMapper _mapper;
+    private readonly IRepository<DivergenciaAuditoria> _repoDivergencia;
+    private readonly IRepository<RevisaoHumana> _repoRevisao;
+        private readonly IMapper _mapper;
+    private readonly IRepository<Documento> _repoDocumento;
 
-    public LoteService(IRepository<Lote> repo, IMapper mapper)
+
+    public LoteService(IRepository<Lote> repo, IMapper mapper, IRepository<Documento> repoDoc, IRepository<DivergenciaAuditoria> repod, IRepository<RevisaoHumana> repoRevisao)
     {
         _repo = repo;
+        _repoDivergencia = repod;
+        _repoRevisao = repoRevisao;
+
         _mapper = mapper;
+        _repoDocumento = repoDoc;
+
     }
 
     public async Task<LoteDto> CriarLoteAsync(CriarLoteDto dto)
@@ -31,7 +40,44 @@ public class LoteService : ILoteService
     public async Task<LoteDto?> ObterPorIdAsync(int id)
     {
         var lote = await _repo.GetByIdAsync(id);
-        return lote == null ? null : _mapper.Map<LoteDto>(lote);
+        if (lote == null)
+            return null;
+
+        var dto = _mapper.Map<LoteDto>(lote);
+
+        await PreencherInfosAtualizadasAsync(dto);
+
+        return dto;
+    }
+
+    private async Task PreencherInfosAtualizadasAsync(LoteDto lote)
+    {
+        var documentos = (await _repoDocumento.GetAllAsync())
+            .Where(d => d.LoteId == lote.Id)
+            .ToList();
+
+        var documentoIds = documentos
+            .Select(d => d.Id)
+            .ToHashSet();
+
+        var divergencias = (await _repoDivergencia.GetAllAsync())
+            .Where(d => documentoIds.Contains(d.DocumentoId) && d.Status == StatusDivergencia.Pendente)
+            .ToList();
+
+        var divergenciaIds = divergencias
+            .Select(d => d.Id)
+            .ToHashSet();
+
+        var revisoes = (await _repoRevisao.GetAllAsync())
+            .Where(r => divergenciaIds.Contains(r.DivergenciaId))
+            .ToList();
+
+        lote.QuantidadeDocumentos = documentos.Count;
+        lote.QuantidadeDivergencias = divergencias.Count;
+        lote.QuantidadeRevisaoHumana = revisoes.Count;
+
+        // ajuste o enum/status conforme o seu projeto
+        lote.QuantidadeProcessados = documentos.Count(d => d.Status == StatusDocumento.Processado);
     }
 
     public async Task<PaginatedList<LoteDto>> ListarAsync(PagedRequest request, int? filterStatus = null)
@@ -59,6 +105,16 @@ public class LoteService : ILoteService
 
         var dtos = query.Select(l => _mapper.Map<LoteDto>(l));
         return PaginatedList<LoteDto>.Create(dtos, request.Page, request.PageSize);
+    }
+
+    public async Task<IEnumerable<LoteDto>> ListarRecentesComInfosAtualizadasAsync(int quantidade)
+    {
+        var lotes = (await ListarRecentesAsync(quantidade)).ToList();
+
+        foreach (var lote in lotes)
+            await PreencherInfosAtualizadasAsync(lote);
+
+        return lotes;
     }
 
     public async Task<IEnumerable<LoteDto>> ListarRecentesAsync(int quantidade = 10)

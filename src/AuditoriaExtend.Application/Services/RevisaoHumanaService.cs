@@ -53,37 +53,50 @@ public class RevisaoHumanaService : IRevisaoHumanaService
         return proxima == null ? null : _mapper.Map<DivergenciaAuditoriaDto>(proxima);
     }
 
-    public async Task<RevisaoHumanaDto> RevisarAsync(RevisarDivergenciaDto dto)
+
+    public async Task RevisarAsync(RevisarDivergenciaDto dto)
     {
-        var divergencia = await _repoDivergencia.GetByIdAsync(dto.DivergenciaId)
-            ?? throw new InvalidOperationException($"Divergência {dto.DivergenciaId} não encontrada.");
+        var revisoes = await _repoRevisao.GetAllAsync();
 
-        var novoStatus = dto.Decisao.ToLower() switch
+        var revisaoExistente = revisoes
+            .FirstOrDefault(x => x.DivergenciaId == dto.DivergenciaId);
+
+        if (revisaoExistente == null)
         {
-            "aceitar" => StatusDivergencia.Aceita,
-            "rejeitar" => StatusDivergencia.Rejeitada,
-            "corrigir" => StatusDivergencia.CorrecaoSolicitada,
-            _ => throw new ArgumentException($"Decisão inválida: {dto.Decisao}")
-        };
+            var novaRevisao = new RevisaoHumana
+            {
+                DivergenciaId = dto.DivergenciaId,
+                Decisao = dto.Decisao,
+                Justificativa = dto.alteracoesJson,
+                ObservacaoCorrecao = dto.ObservacaoCorrecao,
+                DataRevisao = DateTime.UtcNow,
+                DataCriacao = DateTime.UtcNow
+            };
 
-        divergencia.Status = novoStatus;
-        divergencia.DataAtualizacao = DateTime.UtcNow;
-        await _repoDivergencia.UpdateAsync(divergencia);
-
-        var revisao = new RevisaoHumana
+            await _repoRevisao.AddAsync(novaRevisao);
+        }
+        else
         {
-            DivergenciaId = dto.DivergenciaId,
-            Decisao = novoStatus,
-            NomeAuditor = dto.NomeAuditor,
-            Justificativa = dto.Justificativa,
-            ObservacaoCorrecao = dto.ObservacaoCorrecao,
-            DataRevisao = DateTime.UtcNow,
-            DataCriacao = DateTime.UtcNow
-        };
-        await _repoRevisao.AddAsync(revisao);
+            revisaoExistente.Decisao = dto.Decisao;
+            revisaoExistente.NomeAuditor = dto.NomeAuditor;
+            revisaoExistente.Justificativa = dto.alteracoesJson;
+            revisaoExistente.ObservacaoCorrecao = dto.ObservacaoCorrecao;
+            revisaoExistente.DataRevisao = DateTime.UtcNow;
+            revisaoExistente.DataAtualizacao = DateTime.UtcNow;
+
+            await _repoRevisao.UpdateAsync(revisaoExistente);
+        }
+
         await _repoRevisao.SaveChangesAsync();
 
-        return _mapper.Map<RevisaoHumanaDto>(revisao);
+        var divergencia = await _repoDivergencia.GetByIdAsync(dto.DivergenciaId);
+        if (divergencia != null)
+        {
+            divergencia.Status = dto.Decisao;
+            divergencia.DataAtualizacao = DateTime.UtcNow;
+            await _repoDivergencia.UpdateAsync(divergencia);
+            await _repoDivergencia.SaveChangesAsync();
+        }
     }
 
     public async Task<PaginatedList<RevisaoHumanaDto>> ListarHistoricoAsync(PagedRequest request)

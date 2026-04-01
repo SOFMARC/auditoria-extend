@@ -1,8 +1,11 @@
-using Microsoft.AspNetCore.Mvc;
 using AuditoriaExtend.Application.Common;
 using AuditoriaExtend.Application.DTOs;
 using AuditoriaExtend.Application.Interfaces;
 using AuditoriaExtend.Domain.Enums;
+using ImageMagick;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
+using System;
 
 namespace AuditoriaExtend.Web.Controllers;
 
@@ -10,11 +13,16 @@ public class RevisaoHumanaController : Controller
 {
     private readonly IRevisaoHumanaService _revisaoService;
     private readonly IDivergenciaService _divergenciaService;
+    private readonly IWebHostEnvironment _environment;
 
-    public RevisaoHumanaController(IRevisaoHumanaService revisaoService, IDivergenciaService divergenciaService)
+    public RevisaoHumanaController(
+        IRevisaoHumanaService revisaoService,
+        IDivergenciaService divergenciaService,
+        IWebHostEnvironment environment)
     {
         _revisaoService = revisaoService;
         _divergenciaService = divergenciaService;
+        _environment = environment;
     }
 
     // GET /RevisaoHumana
@@ -25,12 +33,25 @@ public class RevisaoHumanaController : Controller
     }
 
     // GET /RevisaoHumana/Fila
-    public async Task<IActionResult> Fila(int page = 1, int pageSize = 10,
-        string sortBy = "Severidade", string sortOrder = "desc",
+    public async Task<IActionResult> Fila(
+        int page = 1,
+        int pageSize = 10,
+        string sortBy = "Severidade",
+        string sortOrder = "desc",
         int? filterSeveridade = null)
     {
-        var request = new PagedRequest { Page = page, PageSize = pageSize, SortBy = sortBy, SortOrder = sortOrder };
-        SeveridadeDivergencia? sev = filterSeveridade.HasValue ? (SeveridadeDivergencia)filterSeveridade.Value : null;
+        var request = new PagedRequest
+        {
+            Page = page,
+            PageSize = pageSize,
+            SortBy = sortBy,
+            SortOrder = sortOrder
+        };
+
+        SeveridadeDivergencia? sev = filterSeveridade.HasValue
+            ? (SeveridadeDivergencia)filterSeveridade.Value
+            : null;
+
         var resultado = await _revisaoService.ObterFilaAsync(request, sev);
         ViewBag.FilterSeveridade = filterSeveridade?.ToString() ?? "";
         return View(resultado);
@@ -40,7 +61,9 @@ public class RevisaoHumanaController : Controller
     public async Task<IActionResult> Revisar(int id)
     {
         var divergencia = await _divergenciaService.ObterPorIdAsync(id);
-        if (divergencia == null) return NotFound();
+        if (divergencia == null)
+            return NotFound();
+
         return View(divergencia);
     }
 
@@ -51,51 +74,68 @@ public class RevisaoHumanaController : Controller
         await _revisaoService.RevisarAsync(new RevisarDivergenciaDto
         {
             DivergenciaId = divergenciaId,
-            Decisao = "aceitar",
-            NomeAuditor = nomeAuditor,
-            Justificativa = justificativa
+            Decisao = StatusDivergencia.Aceita
         });
+
         TempData["Sucesso"] = "Divergência aceita com sucesso.";
         return RedirectToAction(nameof(Fila));
     }
 
-    // POST /RevisaoHumana/Rejeitar
-    [HttpPost]
-    public async Task<IActionResult> Rejeitar(int divergenciaId, string nomeAuditor, string justificativa)
-    {
-        await _revisaoService.RevisarAsync(new RevisarDivergenciaDto
-        {
-            DivergenciaId = divergenciaId,
-            Decisao = "rejeitar",
-            NomeAuditor = nomeAuditor,
-            Justificativa = justificativa
-        });
-        TempData["Sucesso"] = "Divergência rejeitada com sucesso.";
-        return RedirectToAction(nameof(Fila));
-    }
+    //// POST /RevisaoHumana/Rejeitar
+    //[HttpPost]
+    //public async Task<IActionResult> Rejeitar(int divergenciaId, string nomeAuditor, string justificativa)
+    //{
+    //    await _revisaoService.RevisarAsync(new RevisarDivergenciaDto
+    //    {
+    //        DivergenciaId = divergenciaId,
+    //        Decisao = StatusDivergencia.Rejeitada,
+    //        NomeAuditor = nomeAuditor,
+    //        Justificativa = justificativa
+    //    });
+
+    //    TempData["Sucesso"] = "Divergência rejeitada com sucesso.";
+    //    return RedirectToAction(nameof(Fila));
+    //}
 
     // POST /RevisaoHumana/SolicitarCorrecao
     [HttpPost]
-    public async Task<IActionResult> SolicitarCorrecao(int divergenciaId, string nomeAuditor,
-        string? justificativa, string observacaoCorrecao)
+    public async Task<IActionResult> SolicitarCorrecao(
+      int divergenciaId,
+      string nomeAuditor,
+      string alteracoesJson,
+      string observacaoCorrecao)
     {
         await _revisaoService.RevisarAsync(new RevisarDivergenciaDto
         {
             DivergenciaId = divergenciaId,
-            Decisao = "corrigir",
+            Decisao = StatusDivergencia.Corrigida,
             NomeAuditor = nomeAuditor,
-            Justificativa = justificativa,
             ObservacaoCorrecao = observacaoCorrecao
         });
-        TempData["Sucesso"] = "Correção solicitada com sucesso.";
+
+        await _divergenciaService.AplicarCorrecaoNoJsonAsync(
+            divergenciaId,
+            alteracoesJson);
+
+        TempData["Sucesso"] = "Correção aplicada com sucesso.";
         return RedirectToAction(nameof(Fila));
     }
 
     // GET /RevisaoHumana/Historico
-    public async Task<IActionResult> Historico(int page = 1, int pageSize = 10,
-        string sortBy = "DataRevisao", string sortOrder = "desc")
+    public async Task<IActionResult> Historico(
+        int page = 1,
+        int pageSize = 10,
+        string sortBy = "DataRevisao",
+        string sortOrder = "desc")
     {
-        var request = new PagedRequest { Page = page, PageSize = pageSize, SortBy = sortBy, SortOrder = sortOrder };
+        var request = new PagedRequest
+        {
+            Page = page,
+            PageSize = pageSize,
+            SortBy = sortBy,
+            SortOrder = sortOrder
+        };
+
         var resultado = await _revisaoService.ListarHistoricoAsync(request);
         return View(resultado);
     }
@@ -105,24 +145,84 @@ public class RevisaoHumanaController : Controller
     public async Task<IActionResult> Proxima()
     {
         var proxima = await _revisaoService.ObterProximaParaRevisaoAsync();
-        if (proxima == null) return Json(new { encontrada = false });
+
+        if (proxima == null)
+            return Json(new { encontrada = false });
+
         return Json(new { encontrada = true, id = proxima.Id });
     }
 
     // GET /RevisaoHumana/Relatorio
     public async Task<IActionResult> Relatorio()
     {
-        var request = new PagedRequest { Page = 1, PageSize = 10000, SortBy = "DataRevisao", SortOrder = "desc" };
+        var request = new PagedRequest
+        {
+            Page = 1,
+            PageSize = 10000,
+            SortBy = "DataRevisao",
+            SortOrder = "desc"
+        };
+
         var historico = await _revisaoService.ListarHistoricoAsync(request);
 
         var csv = new System.Text.StringBuilder();
         csv.AppendLine("ID;DivergenciaId;Decisao;Auditor;Justificativa;DataRevisao");
+
         foreach (var r in historico.Items)
         {
             csv.AppendLine($"{r.Id};{r.DivergenciaId};{r.Decisao};{r.NomeAuditor};\"{r.Justificativa}\";{r.DataRevisao:dd/MM/yyyy HH:mm}");
         }
 
-        return File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()),
-            "text/csv", $"revisoes_{DateTime.Now:yyyyMMdd}.csv");
+        return File(
+            System.Text.Encoding.UTF8.GetBytes(csv.ToString()),
+            "text/csv",
+            $"revisoes_{DateTime.Now:yyyyMMdd}.csv");
+    }
+
+    [HttpGet]
+    public IActionResult VisualizarDocumento(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return BadRequest("URL inválida.");
+
+        var caminhoRelativo = url.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+        var caminhoCompleto = Path.Combine(_environment.WebRootPath, caminhoRelativo);
+
+        if (!System.IO.File.Exists(caminhoCompleto))
+            return NotFound("Arquivo não encontrado.");
+
+        var ext = Path.GetExtension(caminhoCompleto).ToLowerInvariant();
+
+        if (ext == ".pdf")
+            return PhysicalFile(caminhoCompleto, "application/pdf");
+
+        if (ext == ".jpg" || ext == ".jpeg")
+            return PhysicalFile(caminhoCompleto, "image/jpeg");
+
+        if (ext == ".png")
+            return PhysicalFile(caminhoCompleto, "image/png");
+
+        if (ext == ".tif" || ext == ".tiff")
+        {
+            using var imagens = new MagickImageCollection(caminhoCompleto);
+
+            if (imagens.Count <= 1)
+            {
+                using var img = (MagickImage)imagens[0].Clone();
+                img.Format = MagickFormat.Png;
+
+                using var ms = new MemoryStream();
+                img.Write(ms);
+                return File(ms.ToArray(), "image/png");
+            }
+            else
+            {
+                using var ms = new MemoryStream();
+                imagens.Write(ms, MagickFormat.Pdf);
+                return File(ms.ToArray(), "application/pdf");
+            }
+        }
+
+        return BadRequest("Formato não suportado para visualização.");
     }
 }

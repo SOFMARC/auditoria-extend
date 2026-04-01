@@ -5,6 +5,7 @@ namespace AuditoriaExtend.Application.Interfaces;
 
 public interface ILoteService
 {
+    Task<IEnumerable<LoteDto>> ListarRecentesComInfosAtualizadasAsync(int quantidade);
     Task<LoteDto> CriarLoteAsync(CriarLoteDto dto);
     Task<LoteDto?> ObterPorIdAsync(int id);
     Task<PaginatedList<LoteDto>> ListarAsync(PagedRequest request, int? filterStatus = null);

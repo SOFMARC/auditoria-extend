@@ -8,7 +8,8 @@ public interface IRevisaoHumanaService
 {
     Task<PaginatedList<DivergenciaAuditoriaDto>> ObterFilaAsync(PagedRequest request, SeveridadeDivergencia? severidade = null);
     Task<DivergenciaAuditoriaDto?> ObterProximaParaRevisaoAsync();
-    Task<RevisaoHumanaDto> RevisarAsync(RevisarDivergenciaDto dto);
+    Task RevisarAsync(RevisarDivergenciaDto dto);
     Task<PaginatedList<RevisaoHumanaDto>> ListarHistoricoAsync(PagedRequest request);
     Task<EstatisticasRevisaoDto> ObterEstatisticasAsync();
+
 }

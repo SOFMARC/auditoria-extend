@@ -669,9 +669,34 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     {
         foreach (var nome in nomesCampo)
         {
-            var val = fields[nome]?["value"]?.Value<double?>();
-            if (val.HasValue) return val;
+            var token = fields[nome];
+            if (token == null || token.Type == JTokenType.Null)
+                continue;
+
+            // número direto
+            if (token.Type == JTokenType.Float || token.Type == JTokenType.Integer)
+                return token.Value<double>();
+
+            // string numérica
+            if (token.Type == JTokenType.String &&
+                double.TryParse(token.ToString(), out var valorTexto))
+                return valorTexto;
+
+            // objeto com amount
+            if (token.Type == JTokenType.Object)
+            {
+                var obj = (JObject)token;
+
+                var amount = obj["amount"]?.Value<double?>();
+                if (amount.HasValue)
+                    return amount.Value;
+
+                var value = obj["value"]?.Value<double?>();
+                if (value.HasValue)
+                    return value.Value;
+            }
         }
+
         return null;
     }
 

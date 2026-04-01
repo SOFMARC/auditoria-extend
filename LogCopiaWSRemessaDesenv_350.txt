@@ -1,0 +1,84 @@
+
+-------------------------------------------------------------------------------
+   ROBOCOPY     ::     Robust File Copy para Windows                              
+-------------------------------------------------------------------------------
+
+  Iniciado: quarta-feira, 1 de abril de 2026 16:23:58
+   Origem : E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+     Destino : \\cab-srv-350\wwwroot$\WSRemessa\
+
+    Arquivos: *.*
+	    
+Arquivos Exc: *.config
+	    
+ Diret¢rios Exc: Log
+	    
+  Opáoes: *.* /S /E /DCOPY:DA /COPY:DAT /PURGE /MIR /R:1000000 /W:30 
+
+------------------------------------------------------------------------------
+
+2026/04/01 16:23:58 ERRO 3 (0x00000003) Acessando o Diret¢rio de Origem E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+O sistema n∆o pode encontrar o caminho especificado.
+
+-------------------------------------------------------------------------------
+   ROBOCOPY     ::     Robust File Copy para Windows                              
+-------------------------------------------------------------------------------
+
+  Iniciado: quarta-feira, 1 de abril de 2026 16:24:15
+   Origem : E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+     Destino : \\cab-srv-350\wwwroot$\WSRemessa\
+
+    Arquivos: *.*
+	    
+Arquivos Exc: *.config
+	    
+ Diret¢rios Exc: Log
+	    
+  Opáoes: *.* /S /E /DCOPY:DA /COPY:DAT /PURGE /MIR /R:1000000 /W:30 
+
+------------------------------------------------------------------------------
+
+2026/04/01 16:24:15 ERRO 3 (0x00000003) Acessando o Diret¢rio de Origem E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+O sistema n∆o pode encontrar o caminho especificado.
+
+-------------------------------------------------------------------------------
+   ROBOCOPY     ::     Robust File Copy para Windows                              
+-------------------------------------------------------------------------------
+
+  Iniciado: quarta-feira, 1 de abril de 2026 16:24:20
+   Origem : E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+     Destino : \\cab-srv-350\wwwroot$\WSRemessa\
+
+    Arquivos: *.*
+	    
+Arquivos Exc: *.config
+	    
+ Diret¢rios Exc: Log
+	    
+  Opáoes: *.* /S /E /DCOPY:DA /COPY:DAT /PURGE /MIR /R:1000000 /W:30 
+
+------------------------------------------------------------------------------
+
+2026/04/01 16:24:20 ERRO 3 (0x00000003) Acessando o Diret¢rio de Origem E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+O sistema n∆o pode encontrar o caminho especificado.
+
+-------------------------------------------------------------------------------
+   ROBOCOPY     ::     Robust File Copy para Windows                              
+-------------------------------------------------------------------------------
+
+  Iniciado: quarta-feira, 1 de abril de 2026 16:24:43
+   Origem : E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+     Destino : \\cab-srv-350\wwwroot$\WSRemessa\
+
+    Arquivos: *.*
+	    
+Arquivos Exc: *.config
+	    
+ Diret¢rios Exc: Log
+	    
+  Opá‰es: *.* /S /E /DCOPY:DA /COPY:DAT /PURGE /MIR /R:1000000 /W:30 
+
+------------------------------------------------------------------------------
+
+2026/04/01 16:24:43 ERRO 3 (0x00000003) Acessando o Diret¢rio de Origem E:\Thiago\teste-estudo\Leitura de arquivos\Nova pasta\Publish\WSRemessa\
+O sistema n∆o pode encontrar o caminho especificado.

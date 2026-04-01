@@ -12,6 +12,7 @@ public class LoteDto
     public int QuantidadeDocumentos { get; set; }
     public int QuantidadeProcessados { get; set; }
     public int QuantidadeDivergencias { get; set; }
+    public int QuantidadeRevisaoHumana { get; set; }
     public string? MensagemErro { get; set; }
     public DateTime DataCriacao { get; set; }
     public DateTime? DataFimProcessamento { get; set; }

@@ -46,7 +46,8 @@ public enum StatusDivergencia
     EmRevisao = 1,
     Aceita = 2,
     Rejeitada = 3,
-    CorrecaoSolicitada = 4
+    CorrecaoSolicitada = 4,
+         Corrigida = 5
 }
 
 /// <summary>

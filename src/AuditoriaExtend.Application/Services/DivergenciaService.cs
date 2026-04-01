@@ -1,10 +1,11 @@
-using AutoMapper;
 using AuditoriaExtend.Application.Common;
 using AuditoriaExtend.Application.DTOs;
 using AuditoriaExtend.Application.Interfaces;
 using AuditoriaExtend.Domain.Entities;
 using AuditoriaExtend.Domain.Enums;
 using AuditoriaExtend.Domain.Repositories;
+using AutoMapper;
+using Newtonsoft.Json.Linq;
 
 namespace AuditoriaExtend.Application.Services;
 
@@ -12,6 +13,8 @@ public class DivergenciaService : IDivergenciaService
 {
     private readonly IRepository<DivergenciaAuditoria> _repo;
     private readonly IRepository<Documento> _repoDoc;
+    private readonly IRepository<RevisaoHumana> _repoRevisao;
+
     private readonly IMapper _mapper;
 
     public DivergenciaService(IRepository<DivergenciaAuditoria> repo,
@@ -20,6 +23,144 @@ public class DivergenciaService : IDivergenciaService
         _repo = repo;
         _repoDoc = repoDoc;
         _mapper = mapper;
+    }
+
+    public async Task AplicarCorrecaoNoJsonAsync(int divergenciaId, string novoValorJson)
+    {
+        var divergencia = await _repo.GetByIdAsync(divergenciaId);
+
+        if (divergencia == null)
+            throw new Exception("Divergência não encontrada.");
+
+        var documento = await _repoDoc.GetByIdAsync(divergencia.DocumentoId);
+        if (documento == null)
+            throw new Exception("Documento não encontrado.");
+
+        if (string.IsNullOrWhiteSpace(documento.DadosExtraidos))
+            throw new Exception("Documento sem DadosExtraidos.");
+
+        if (string.IsNullOrWhiteSpace(divergencia.CampoAfetado))
+            throw new Exception("Divergência sem CampoAfetado.");
+
+        var json = JObject.Parse(documento.DadosExtraidos);
+        var novoValor = JToken.Parse(novoValorJson);
+
+        AplicarNovoValorNoCampo(json, divergencia.CampoAfetado, novoValor);
+
+        documento.DadosExtraidos = json.ToString(Newtonsoft.Json.Formatting.None);
+        documento.DataAtualizacao = DateTime.Now;
+
+        await _repoDoc.UpdateAsync(documento);
+        await _repoDoc.SaveChangesAsync();
+    }
+
+    private static IEnumerable<DivergenciaAuditoria> RemoverDuplicadas(IEnumerable<DivergenciaAuditoria> divergencias)
+    {
+        return divergencias
+            .GroupBy(d => new
+            {
+                d.DocumentoId,
+                d.Tipo,
+                CampoNormalizado = NormalizarCampo(d.CampoAfetado),
+                d.ValorEncontrado,
+                d.ValorEsperado
+            })
+            .Select(g => g
+                .OrderByDescending(d => TemUnderline(d.CampoAfetado)) // prioriza total_geral
+                .ThenByDescending(d => d.DataCriacao)
+                .First());
+    }
+
+    private static string NormalizarCampo(string? campo)
+    {
+        if (string.IsNullOrWhiteSpace(campo))
+            return string.Empty;
+
+        return ToSnakeCase(campo);
+    }
+
+    private static bool TemUnderline(string? campo)
+    {
+        return !string.IsNullOrWhiteSpace(campo) && campo.Contains('_');
+    }
+
+    private static void AplicarNovoValorNoCampo(JObject json, string campoAfetado, JToken novoValor)
+    {
+        var encontrou = false;
+
+        foreach (var nomeCampo in ObterAliases(campoAfetado))
+        {
+            if (json[nomeCampo] is JObject campoObj && campoObj["value"] != null)
+            {
+                campoObj["value"] = novoValor.DeepClone();
+                encontrou = true;
+            }
+        }
+
+        if (!encontrou)
+            throw new Exception($"Campo '{campoAfetado}' não encontrado no JSON.");
+    }
+
+    private static IEnumerable<string> ObterAliases(string campo)
+    {
+        yield return campo;
+
+        var snake = ToSnakeCase(campo);
+        if (!string.Equals(snake, campo, StringComparison.Ordinal))
+            yield return snake;
+    }
+
+    private static string ToSnakeCase(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+            return texto;
+
+        var chars = new List<char>();
+
+        for (int i = 0; i < texto.Length; i++)
+        {
+            var c = texto[i];
+
+            if (char.IsUpper(c) && i > 0)
+                chars.Add('_');
+
+            chars.Add(char.ToLowerInvariant(c));
+        }
+
+        return new string(chars.ToArray());
+    }
+
+    public async Task CorrigirValorExtraidoAsync(int divergenciaId, string novoValorJson)
+    {
+        var divergencia = await _repo.GetByIdAsync(divergenciaId);
+
+        if (divergencia == null)
+            throw new Exception("Divergência não encontrada.");
+
+        // aqui precisa existir DocumentoId na divergência
+        var documento = await _repoDoc.GetByIdAsync(divergencia.DocumentoId);
+
+        if (documento == null)
+            throw new Exception("Documento não encontrado.");
+
+        if (string.IsNullOrWhiteSpace(documento.DadosExtraidos))
+            throw new Exception("Documento sem dados extraídos.");
+
+        var json = JObject.Parse(documento.DadosExtraidos);
+        var novoValor = JToken.Parse(novoValorJson);
+
+        // Atualiza os dois campos, porque no seu JSON existem os dois formatos
+        if (json["itensSolicitados"] is JObject itensSolicitados)
+            itensSolicitados["value"] = novoValor;
+
+        if (json["itens_solicitados"] is JObject itensSolicitadosSnake)
+            itensSolicitadosSnake["value"] = novoValor;
+
+        documento.DadosExtraidos = json.ToString(Newtonsoft.Json.Formatting.None);
+        documento.DataAtualizacao = DateTime.Now;
+
+        await _repoDoc.UpdateAsync(documento);
+        await _repoDoc.SaveChangesAsync();
     }
 
     public async Task<DivergenciaAuditoriaDto> CriarAsync(int documentoId, TipoDivergencia tipo,
@@ -37,13 +178,26 @@ public class DivergenciaService : IDivergenciaService
             Descricao = descricao,
             ValorConfianca = valorConfianca,
             CampoAfetado = campoAfetado,
-            ValorEncontrado = valorEncontrado,
-            ValorEsperado = valorEsperado,
+            ValorEncontrado = NormalizarTextoBanco(valorEncontrado),
+            ValorEsperado = NormalizarTextoBanco(valorEsperado),
             DataCriacao = DateTime.UtcNow
         };
         await _repo.AddAsync(div);
         await _repo.SaveChangesAsync();
         return _mapper.Map<DivergenciaAuditoriaDto>(div);
+    }
+
+    private static string? NormalizarTextoBanco(string? valor, int max = 500)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return valor;
+
+        var texto = valor.Trim();
+
+        if (texto.StartsWith("[") || texto.StartsWith("{"))
+            return "[JSON_COMPLEXO]";
+
+        return texto.Length > max ? texto.Substring(0, max) : texto;
     }
 
     public async Task<DivergenciaAuditoriaDto?> ObterPorIdAsync(int id)
@@ -91,6 +245,8 @@ public class DivergenciaService : IDivergenciaService
         if (filterTipo.HasValue)
             query = query.Where(d => (int)d.Tipo == filterTipo.Value);
 
+        query = RemoverDuplicadas(query).AsQueryable();
+
         query = (request.SortBy?.ToLower(), request.SortOrder?.ToLower()) switch
         {
             ("severidade", "asc") => query.OrderBy(d => d.Severidade),
@@ -108,16 +264,26 @@ public class DivergenciaService : IDivergenciaService
     public async Task<IEnumerable<DivergenciaAuditoriaDto>> ListarPorDocumentoAsync(int documentoId)
     {
         var todos = await _repo.GetAllAsync();
-        return todos.Where(d => d.DocumentoId == documentoId)
-                    .Select(d => _mapper.Map<DivergenciaAuditoriaDto>(d));
+
+        var query = todos
+            .Where(d => d.DocumentoId == documentoId && d.Status == StatusDivergencia.Pendente);
+
+        query = RemoverDuplicadas(query);
+
+        return query.Select(d => _mapper.Map<DivergenciaAuditoriaDto>(d));
     }
 
     public async Task<IEnumerable<DivergenciaAuditoriaDto>> ListarPendentesPorSeveridadeAsync(SeveridadeDivergencia? severidade = null)
     {
         var todos = await _repo.GetAllAsync();
+
         var query = todos.Where(d => d.Status == StatusDivergencia.Pendente);
+
         if (severidade.HasValue)
             query = query.Where(d => d.Severidade == severidade.Value);
+
+        query = RemoverDuplicadas(query);
+
         return query.OrderByDescending(d => d.Severidade)
                     .ThenBy(d => d.DataCriacao)
                     .Select(d => _mapper.Map<DivergenciaAuditoriaDto>(d));
