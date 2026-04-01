@@ -382,55 +382,98 @@ public class WebhookProcessorService : IWebhookProcessorService
 
     private async Task VerificarConclusaoLoteAsync(int loteId)
     {
-        var lote = await _repoLote.GetByIdAsync(loteId);
-        if (lote == null) return;
+        _logger.LogInformation("Lote {LoteId}: iniciando VerificarConclusaoLoteAsync", loteId);
 
-        // Guarda de segurança: só verifica conclusão se o lote já está em AguardandoExtend.
-        // Isso evita encerrar o lote antes de todos os arquivos terem sido enviados.
+        var lote = await _repoLote.GetByIdAsync(loteId);
+        if (lote == null)
+        {
+            _logger.LogWarning("Lote {LoteId}: lote não encontrado", loteId);
+            return;
+        }
+
+        _logger.LogInformation(
+            "Lote {LoteId}: status atual={Status}, QuantidadeDocumentos={QtdDocs}, QuantidadeProcessados={QtdProc}, QuantidadeEnviadosExtend={QtdEnv}",
+            loteId, lote.Status, lote.QuantidadeDocumentos, lote.QuantidadeProcessados, lote.QuantidadeEnviadosExtend);
+
         if (lote.Status != StatusLote.AguardandoExtend)
         {
-            _logger.LogDebug(
-                "Lote {LoteId}: status={Status}, aguardando transição para AguardandoExtend antes de verificar conclusão.",
+            _logger.LogWarning(
+                "Lote {LoteId}: NÃO será concluído porque o status do lote é {Status} e não AguardandoExtend",
                 loteId, lote.Status);
             return;
         }
 
-        // QuantidadeDocumentos é definido em ProcessarLoteAsync antes de qualquer envio.
-        // QuantidadeProcessados é incrementado a cada webhook recebido (Processado ou Erro).
-        // O lote só conclui quando todos os documentos tiverem sido respondidos pela Extend.
         var docs = await _repoDoc.GetAllAsync();
-        var docsLote = docs.Where(d => d.LoteId == loteId).ToList();
+        var docsLote = docs.Where(d => d.LoteId == loteId).OrderBy(d => d.Id).ToList();
 
-        var totalDocumentos   = lote.QuantidadeDocumentos > 0 ? lote.QuantidadeDocumentos : docsLote.Count;
-        var totalFinalizados  = docsLote.Count(d =>
+        _logger.LogInformation("Lote {LoteId}: total de documentos encontrados no repositório={TotalDocsRepo}", loteId, docsLote.Count);
+
+        foreach (var d in docsLote)
+        {
+            _logger.LogInformation(
+                "Lote {LoteId}: Documento Id={DocId}, NomeArquivo={NomeArquivo}, Status={Status}, RunId={RunId}, AtendimentoAgrupadoId={AtendimentoAgrupadoId}",
+                loteId, d.Id, d.NomeArquivo, d.Status, d.ExtendRunId, d.AtendimentoAgrupadoId);
+        }
+
+        var totalDocumentos = lote.QuantidadeDocumentos > 0 ? lote.QuantidadeDocumentos : docsLote.Count;
+        var totalFinalizados = docsLote.Count(d =>
             d.Status == StatusDocumento.Processado ||
             d.Status == StatusDocumento.Erro);
-        var totalAguardando   = docsLote.Count(d =>
+
+        var totalAguardando = docsLote.Count(d =>
             d.Status == StatusDocumento.AguardandoExtend ||
-            d.Status == StatusDocumento.EnviadoExtend    ||
+            d.Status == StatusDocumento.EnviadoExtend ||
             d.Status == StatusDocumento.Pendente);
 
-        _logger.LogInformation(
-            "Lote {LoteId}: {Finalizados}/{Total} documentos finalizados, {Aguardando} ainda aguardando.",
-            loteId, totalFinalizados, totalDocumentos, totalAguardando);
+        var totalOutros = docsLote.Count - totalFinalizados - totalAguardando;
 
-        // Só conclui quando não houver mais nenhum documento aguardando resposta da Extend
-        // E o total de finalizados bater com o total esperado de documentos do lote.
-        if (totalAguardando > 0 || totalFinalizados < totalDocumentos)
+        _logger.LogInformation(
+            "Lote {LoteId}: resumo => Finalizados={Finalizados}, Aguardando={Aguardando}, Outros={Outros}, TotalEsperado={TotalEsperado}, TotalRepositorio={TotalRepositorio}",
+            loteId, totalFinalizados, totalAguardando, totalOutros, totalDocumentos, docsLote.Count);
+
+        if (docsLote.Count != totalDocumentos)
         {
+            _logger.LogWarning(
+                "Lote {LoteId}: divergência de quantidade. QuantidadeDocumentos do lote={QtdLote}, documentos no repositório={QtdRepo}",
+                loteId, totalDocumentos, docsLote.Count);
+        }
+
+        if (totalAguardando > 0)
+        {
+            _logger.LogWarning(
+                "Lote {LoteId}: NÃO será concluído porque ainda existem {Aguardando} documento(s) aguardando resposta/processamento",
+                loteId, totalAguardando);
+            return;
+        }
+
+        if (totalFinalizados < totalDocumentos)
+        {
+            _logger.LogWarning(
+                "Lote {LoteId}: NÃO será concluído porque totalFinalizados={Finalizados} é menor que totalDocumentos={Total}",
+                loteId, totalFinalizados, totalDocumentos);
             return;
         }
 
         _logger.LogInformation(
-            "Lote {LoteId}: todos os {Total} documentos finalizados. Executando regras cross-documento (E, F, G).",
-            loteId, totalDocumentos);
+            "Lote {LoteId}: critérios atendidos. Executando regras cross-documento. Finalizados={Finalizados}, Total={Total}",
+            loteId, totalFinalizados, totalDocumentos);
 
         await _auditoriaService.DetectarDuplicidadesAsync(loteId);
+        _logger.LogInformation("Lote {LoteId}: DetectarDuplicidadesAsync executado", loteId);
+
         await _auditoriaService.DetectarAusenciaDocumentalAsync(loteId);
+        _logger.LogInformation("Lote {LoteId}: DetectarAusenciaDocumentalAsync executado", loteId);
+
         await _auditoriaService.CalcularScoreRiscoAsync(loteId);
+        _logger.LogInformation("Lote {LoteId}: CalcularScoreRiscoAsync executado", loteId);
 
         await _loteService.AtualizarStatusAsync(loteId, StatusLote.Concluido);
 
-        _logger.LogInformation("Lote {LoteId}: concluido com sucesso.", loteId);
+        var loteAtualizado = await _repoLote.GetByIdAsync(loteId);
+        _logger.LogInformation(
+            "Lote {LoteId}: status atualizado para {StatusFinal}",
+            loteId, loteAtualizado?.Status);
+
+        _logger.LogInformation("Lote {LoteId}: concluído com sucesso", loteId);
     }
 }

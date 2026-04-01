@@ -240,11 +240,123 @@ Agora analise os dados recebidos seguindo exatamente essas instruções.
         try
         {
             // Monta o payload para o LLM
+            // Monta o payload para o LLM
             var payload = await MontarPayloadLoteAsync(loteId);
-            var userMessage = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = false });
+            var userMessage = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+
+            // LOG PARA COPIAR E COLAR AQUI NO CHAT
+            _logger.LogInformation(
+                "FraudeAnalise USER_MESSAGE INICIO | LoteId={LoteId}{NewLine}{UserMessage}{NewLine}FraudeAnalise USER_MESSAGE FIM | LoteId={LoteId}",
+                loteId,
+                Environment.NewLine,
+                userMessage);
+
+            // PARA TESTE MANUAL:
+            // 1) copie o conteúdo entre USER_MESSAGE INICIO/FIM
+            // 2) me envie aqui no chat
+            // 3) eu te devolvo o JSON final
+            // 4) cole o JSON abaixo em respostaJson
+            string respostaJson = """
+{
+  "status_auditoria": "aprovado_com_ressalvas",
+  "score_risco": 16,
+  "nivel_risco": "baixo",
+  "resumo": "O lote consolidado apresenta forte coerência estrutural entre pedido médico e guias analisadas, com paciente, carteira, data da solicitação e médico solicitante compatíveis. Os procedimentos laboratoriais e de imagem aparecem distribuídos em múltiplas guias, mas em conjunto cobrem adequadamente o pedido. Há ressalvas documentais por baixa legibilidade do pedido e ausência de assinatura manuscrita médica claramente identificável, além de equivalências semânticas e normalizações de descrição/código compatíveis com OCR e padrão TISS. Não foram identificados, neste lote, indícios fortes combinados de duplicidade indevida, cobrança sem lastro ou conflito relevante de identidade.",
+  "lote": {
+    "quantidade_guias": 7,
+    "guias_analisadas": [
+      "217307783_4200020303931.TIFF",
+      "217307783_4200020303932.TIFF",
+      "217307783_4200020303933.TIFF",
+      "217307783_4200020303934.TIFF",
+      "217307783_4200020303935.TIFF",
+      "217307783_NF.TIFF",
+      "217307783_REM.TIFF"
+    ],
+    "paciente": "Cristiane da Silva",
+    "numero_carteira": "402865000178",
+    "data_pedido": "2025-01-18",
+    "data_solicitacao_lote": "2025-01-18",
+    "medico": "Vera Lúcia Martins de Nóbrega",
+    "crm_ou_conselho": "CRM 36675 / SP"
+  },
+  "cobertura_pedido": {
+    "itens_cobertos": [
+      "HEMOGRAMA",
+      "COLESTEROL_TOTAL",
+      "HDL_COLESTEROL",
+      "LDL_COLESTEROL",
+      "VLDL_COLESTEROL",
+      "TRIGLICERIDES",
+      "ACIDO_URICO",
+      "UREIA",
+      "CREATININA",
+      "SODIO",
+      "POTASSIO",
+      "GGT",
+      "T3_TOTAL",
+      "T4_LIVRE",
+      "URINA_TIPO_I",
+      "UROCULTURA",
+      "ANTIBIOGRAMA_URINA",
+      "CALCIO",
+      "HEMOGLOBINA_GLICADA"
+    ],
+    "itens_cobertura_parcial": [
+      "MAMOGRAFIA_BILATERAL_DIGITAL (atendida por mamografia digital compatível com a regra semântica e contexto clínico)",
+      "GLICEMIA_JEJUM (atendida por GLICOSE)",
+      "TGO (atendida por TGO_AST)",
+      "TGP (atendida por TGP_ALT)",
+      "TSH_ULTRA_SENSIVEL (atendida por TSH)",
+      "VITAMINA_D (atendida por 25OH_VITAMINA_D)"
+    ],
+    "itens_nao_cobertos": [],
+    "itens_realizados_sem_lastro": []
+  },
+  "validacoes_financeiras": {
+    "soma_itens_confere_total_procedimentos": true,
+    "composicao_total_geral_confere": true,
+    "achados_financeiros": [
+      "Os totais das guias analisadas são estruturalmente coerentes com a soma dos itens realizados e com a composição do total geral.",
+      "Há guia/documento complementar com total zerado no lote, sem que isso configure, por si só, indício de fraude."
+    ]
+  },
+  "validacoes_documentais": {
+    "paciente_coerente": true,
+    "medico_coerente": true,
+    "assinatura_medico_presente": false,
+    "carimbo_medico_presente": true,
+    "assinatura_beneficiario_presente_em_todas_guias": true,
+    "legibilidade_reduz_confianca": true
+  },
+  "achados": [
+    {
+      "regra": "NORM_OCR_01",
+      "titulo": "Baixa legibilidade do pedido médico e ausência de assinatura manuscrita inequívoca",
+      "severidade": "media",
+      "confianca": 0.88,
+      "evidencia": "O pedido médico informa baixa legibilidade do documento e não identifica assinatura manuscrita clara do médico, embora haja carimbo e identificação do profissional solicitante.",
+      "guia_relacionada": "217307783_4200020303935_Anexo.TIFF",
+      "item_relacionado": "documento_pedido",
+      "acao_sugerida": "Manter aprovado com ressalvas e permitir conferência humana documental se exigido pelo fluxo interno."
+    },
+    {
+      "regra": "NORM_SEM_02",
+      "titulo": "Cobertura do pedido depende de equivalências semânticas e consolidação do lote",
+      "severidade": "baixa",
+      "confianca": 0.91,
+      "evidencia": "Parte da correspondência entre pedido e guias depende de equivalências previstas, como GLICEMIA_JEJUM≈GLICOSE, TGO≈TGO_AST, TGP≈TGP_ALT, TSH_ULTRA_SENSIVEL≈TSH, VITAMINA_D≈25OH_VITAMINA_D e MAMOGRAFIA_BILATERAL_DIGITAL≈MAMOGRAFIA_DIGITAL em contexto compatível.",
+      "guia_relacionada": "lote_consolidado",
+      "item_relacionado": "múltiplos_itens",
+      "acao_sugerida": "Aceitar a cobertura consolidada do lote, preservando rastreabilidade por guia para eventual auditoria posterior."
+    }
+  ],
+  "recomendacao_final": "Aprovar com ressalvas. O lote consolidado cobre adequadamente o pedido e não apresenta combinação robusta de indícios para retenção por suspeita de fraude. As ressalvas se concentram em legibilidade documental e em correspondências por equivalência semântica/OCR, que permanecem compatíveis com o contexto clínico e estrutural do atendimento."
+}
+""";
 
             // Chama o LLM
-            var respostaJson = await ChamarLlmAsync(userMessage, ct);
+            //var respostaJson = await ChamarLlmAsync(userMessage, ct);
 
             // Faz parse do resultado
             using var doc = JsonDocument.Parse(respostaJson);

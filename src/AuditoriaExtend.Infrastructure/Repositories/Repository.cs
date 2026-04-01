@@ -68,7 +68,27 @@ public class Repository<T> : IRepository<T> where T : class
 
     public Task UpdateAsync(T entity)
     {
-        _set.Update(entity);
+        var entityType = _context.Model.FindEntityType(typeof(T));
+        var primaryKey = entityType?.FindPrimaryKey();
+
+        if (primaryKey != null)
+        {
+            var keyValues = primaryKey.Properties
+                .Select(p => p.PropertyInfo?.GetValue(entity))
+                .ToArray();
+
+            var localEntity = _set.Local.FirstOrDefault(e =>
+                primaryKey.Properties
+                    .Select(p => p.PropertyInfo?.GetValue(e))
+                    .SequenceEqual(keyValues));
+
+            if (localEntity != null)
+            {
+                _context.Entry(localEntity).State = EntityState.Detached;
+            }
+        }
+
+        _context.Entry(entity).State = EntityState.Modified;
         return Task.CompletedTask;
     }
 
