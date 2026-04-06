@@ -89,11 +89,21 @@ public class AuditoriaRegraService : IAuditoriaRegraService
 
         if (fields != null)
         {
-            // Obtém todos os metadados de uma vez via helper tipado
+            // Obtém todos os metadados de uma vez via helper tipado.
+            // IMPORTANTE: O JSON pode conter campos duplicados (snake_case + camelCase) em documentos
+            // processados com versões antigas do WebhookProcessorService. Filtramos apenas camelCase.
             var metadados = ExtracaoJsonHelper.ObterMetadados(fields);
+
+            // Detecta se o extractor suporta citações: se QUALQUER campo tiver citations preenchido,
+            // então o extractor suporta e campos críticos sem citation são suspeitos.
+            // Se NENHUM campo tiver citations, o extractor não suporta — não gerar C4.
+            var extractorSuportaCitacoes = metadados.Any(m => m.Citations.Count > 0);
 
             foreach (var meta in metadados)
             {
+                // Pula campos snake_case duplicados (legado): se existe versão camelCase do mesmo campo,
+                // o snake_case é redundante e não deve gerar divergências extras.
+                if (meta.NomeCampo.Contains('_')) continue;
                 var nomeCampo = meta.NomeCampo;
                 bool ehCritico    = CamposCriticos.Contains(nomeCampo);
                 bool ehImportante = CamposImportantes.Contains(nomeCampo);
@@ -148,8 +158,9 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 }
 
                 // C4: campo crítico sem citação (citations vazio ou ausente)
-                // Citações provam que o valor foi extraído do documento original.
-                if (ehCritico && meta.Citations.Count == 0 && !string.IsNullOrWhiteSpace(value))
+                // Só gera divergência se o extractor SUPORTA citações (pelo menos um campo tem citations).
+                // Se nenhum campo tem citations, o extractor não foi configurado para isso — não é divergência.
+                if (ehCritico && extractorSuportaCitacoes && meta.Citations.Count == 0 && !string.IsNullOrWhiteSpace(value))
                 {
                     await _divService.CriarAsync(documentoId,
                         TipoDivergencia.CampoCriticoSemCitacao, SeveridadeDivergencia.Media,
@@ -276,7 +287,8 @@ public class AuditoriaRegraService : IAuditoriaRegraService
 
         // A4: Soma dos valores dos itens realizados diferente do total geral (verificação monetária)
         // totalGeral é o campo monetário {amount: X} que representa o valor total da guia.
-        if (totalGeral.HasValue && itensRealizados.Count > 0)
+        // Não verifica quando totalGeral == 0 (guia de cortesia/convênio sem cobrança financeira).
+        if (totalGeral.HasValue && totalGeral.Value > 0.01 && itensRealizados.Count > 0)
         {
             var somaItens = itensRealizados
                 .Where(i => i.ValorTotal.HasValue)
