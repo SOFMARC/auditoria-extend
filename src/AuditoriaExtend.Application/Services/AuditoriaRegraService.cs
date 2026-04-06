@@ -1,16 +1,21 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
+using AuditoriaExtend.Application.Common;
 using AuditoriaExtend.Application.Interfaces;
 using AuditoriaExtend.Domain.Entities;
 using AuditoriaExtend.Domain.Enums;
 using AuditoriaExtend.Domain.Repositories;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Newtonsoft.Json.Linq;
 
 namespace AuditoriaExtend.Application.Services;
 
 /// <summary>
 /// Implementa todas as regras de auditoria após o retorno da Extend.
 /// A=IntraGuia | B=PedidoVsGuia | C=Confiança | D=OrigemSuspeita | E=Duplicidade | F=AusenciaDocumental | G=ScoreRisco
+///
+/// O JSON armazenado em Documento.DadosExtraidos está no formato normalizado pelo
+/// WebhookProcessorService: apenas camelCase, cada campo como wrapper
+/// { "value": X, "ocrConfidence": Y, "logprobsConfidence": Z, "citations": [...], ... }
 /// </summary>
 public class AuditoriaRegraService : IAuditoriaRegraService
 {
@@ -25,38 +30,26 @@ public class AuditoriaRegraService : IAuditoriaRegraService
 
     // Limiares de confiança (Regra C)
     private const double LimiarOcrCriticoObrigatorio = 0.80;
-    private const double LimiarOcrImportanteAlerta = 0.90;
-    private const int LimiarReviewScoreBaixo = 3;
-    private const int LimiarReviewScoreAlerta = 4;
+    private const double LimiarOcrImportanteAlerta   = 0.90;
+    private const double LimiarReviewScoreBaixo      = 3.0;
+    private const double LimiarReviewScoreAlerta      = 4.0;
 
-    // Campos criticos que exigem revisao humana obrigatoria
-    // Inclui tanto camelCase (formato interno normalizado) quanto snake_case (formato bruto da Extend)
+    // Campos críticos — apenas camelCase (o JSON normalizado não contém snake_case).
+    // Esses campos exigem revisão humana obrigatória quando a confiança é baixa.
     private static readonly HashSet<string> CamposCriticos = new(StringComparer.OrdinalIgnoreCase)
     {
-        // camelCase (formato normalizado pelo WebhookProcessorService)
-        "nomePaciente", "crm", "crmMedico", "numeroGuia", "numeroPedido",
-        "dataSolicitacao", "dataAtendimento", "codigoProcedimento", "procedimento",
+        "nomePaciente", "crm", "numeroGuia", "numeroPedido",
+        "dataSolicitacao", "dataAtendimento", "codigoProcedimento",
         "quantidadeSolicitada", "quantidadeRealizada", "totalGeral",
-        "numeroCarteira", "itensSolicitados", "itensRealizados",
-        // snake_case (formato bruto da Extend - armazenado em paralelo pelo NormalizarCampos)
-        "nome_paciente", "nome_beneficiario", "crm_medico",
-        "numero_guia", "numero_guia_prestador", "numero_pedido",
-        "data_solicitacao", "data_atendimento", "data_realizacao",
-        "codigo_procedimento", "quantidade_solicitada", "quantidade_realizada",
-        "total_geral", "numero_carteira", "itens_solicitados", "itens_realizados"
+        "numeroCarteira", "itensSolicitados", "itensRealizados", "itensPedido",
     };
 
-    // Campos importantes que geram alerta
-    // Inclui tanto camelCase quanto snake_case
+    // Campos importantes — geram alerta mas não revisão obrigatória.
     private static readonly HashSet<string> CamposImportantes = new(StringComparer.OrdinalIgnoreCase)
     {
-        // camelCase
-        "nomeMedico", "especialidade", "cid", "indicacaoClinica", "valorUnitario", "valorTotal",
-        "codigoCnes", "totalOpme", "totalProcedimentos",
-        // snake_case
-        "nome_medico", "nome_solicitante", "especialidade", "cid",
-        "indicacao_clinica", "diagnostico", "valor_unitario", "valor_total",
-        "codigo_cnes", "cnes", "total_opme", "total_procedimentos"
+        "nomeMedico", "especialidade", "cid", "indicacaoClinica",
+        "valorUnitario", "valorTotal", "codigoCnes",
+        "totalOpme", "totalProcedimentos",
     };
 
     public AuditoriaRegraService(
@@ -89,35 +82,33 @@ public class AuditoriaRegraService : IAuditoriaRegraService
 
         int divergencias = 0;
         bool revisaoNecessaria = false;
-        bool origemSuspeita = false;
+        bool origemSuspeita    = false;
 
         JObject? fields = null;
         try { fields = JObject.Parse(doc.DadosExtraidos); } catch { /* JSON inválido */ }
 
         if (fields != null)
         {
-            foreach (var prop in fields.Properties())
+            // Obtém todos os metadados de uma vez via helper tipado
+            var metadados = ExtracaoJsonHelper.ObterMetadados(fields);
+
+            foreach (var meta in metadados)
             {
-                var nomeCampo = prop.Name;
-                var fieldObj = prop.Value as JObject;
-                if (fieldObj == null) continue;
-
-                var ocrConf = fieldObj["confidence"]?.Value<double?>();
-                var reviewScore = fieldObj["reviewAgentScore"]?.Value<int?>();
-                var citation = fieldObj["citation"]?.ToString();
-                var pageNumber = fieldObj["pageNumber"]?.Value<int?>();
-                var isPrintedPage = fieldObj["isPrintedPage"]?.Value<bool?>() ?? false;
-                var value = fieldObj["value"]?.ToString();
-
-                bool ehCritico = CamposCriticos.Contains(nomeCampo);
+                var nomeCampo = meta.NomeCampo;
+                bool ehCritico    = CamposCriticos.Contains(nomeCampo);
                 bool ehImportante = CamposImportantes.Contains(nomeCampo);
+
+                // Usa reviewAgentScore (double) quando disponível; fallback para ocrConfidence
+                var reviewScore = meta.ReviewAgentScore;
+                var ocrConf     = meta.OcrConfidence;
+                var value       = meta.Value;
 
                 // C1: reviewAgentScore <= 3 em campo crítico → revisão obrigatória
                 if (ehCritico && reviewScore.HasValue && reviewScore.Value <= LimiarReviewScoreBaixo)
                 {
                     await _divService.CriarAsync(documentoId,
                         TipoDivergencia.CampoCriticoReviewScoreBaixo, SeveridadeDivergencia.Critica,
-                        $"Campo crítico '{nomeCampo}' com reviewAgentScore={reviewScore} (≤ {LimiarReviewScoreBaixo}) — revisão obrigatória.",
+                        $"Campo crítico '{nomeCampo}' com reviewAgentScore={reviewScore:F1} (≤ {LimiarReviewScoreBaixo}) — revisão obrigatória.",
                         valorConfianca: ocrConf, campoAfetado: nomeCampo,
                         valorEncontrado: value, valorEsperado: $"reviewAgentScore > {LimiarReviewScoreBaixo}");
                     revisaoNecessaria = true;
@@ -128,7 +119,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 {
                     await _divService.CriarAsync(documentoId,
                         TipoDivergencia.CampoCriticoReviewScoreAlerta, SeveridadeDivergencia.Alta,
-                        $"Campo crítico '{nomeCampo}' com reviewAgentScore={reviewScore} — alerta de qualidade.",
+                        $"Campo crítico '{nomeCampo}' com reviewAgentScore={reviewScore:F1} — alerta de qualidade.",
                         valorConfianca: ocrConf, campoAfetado: nomeCampo, valorEncontrado: value);
                     divergencias++;
                 }
@@ -156,8 +147,9 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                     }
                 }
 
-                // C4: campo crítico sem citação
-                if (ehCritico && string.IsNullOrWhiteSpace(citation) && !string.IsNullOrWhiteSpace(value))
+                // C4: campo crítico sem citação (citations vazio ou ausente)
+                // Citações provam que o valor foi extraído do documento original.
+                if (ehCritico && meta.Citations.Count == 0 && !string.IsNullOrWhiteSpace(value))
                 {
                     await _divService.CriarAsync(documentoId,
                         TipoDivergencia.CampoCriticoSemCitacao, SeveridadeDivergencia.Media,
@@ -167,6 +159,12 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 }
 
                 // D: Origem suspeita — item ancorado em página impressa posterior
+                // (isPrintedPage indica que o campo veio de uma página adicionada após o documento original)
+                // Nota: isPrintedPage não está no MetadadoCampo; verificamos diretamente no JObject
+                var fieldObj = fields[nomeCampo] as JObject;
+                var isPrintedPage = fieldObj?["isPrintedPage"]?.Value<bool?>() ?? false;
+                var pageNumber    = fieldObj?["pageNumber"]?.Value<int?>();
+
                 if (doc.TipoDocumento == TipoDocumento.PedidoMedico && isPrintedPage)
                 {
                     if (_options.ModoAuditoria == ModoAuditoria.Estrito)
@@ -176,7 +174,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                             $"[MODO ESTRITO] Campo '{nomeCampo}' encontrado em página impressa posterior (pág. {pageNumber}) — item rejeitado.",
                             campoAfetado: nomeCampo, valorEncontrado: value);
                         revisaoNecessaria = true;
-                        origemSuspeita = true;
+                        origemSuspeita    = true;
                         divergencias++;
                     }
                     else
@@ -186,7 +184,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                             $"[MODO ASSISTIDO] Campo '{nomeCampo}' encontrado em página impressa posterior (pág. {pageNumber}) — alerta de origem suspeita.",
                             campoAfetado: nomeCampo, valorEncontrado: value);
                         revisaoNecessaria = true;
-                        origemSuspeita = true;
+                        origemSuspeita    = true;
                         divergencias++;
                     }
                 }
@@ -221,23 +219,23 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         JObject? fields = null;
         try { fields = JObject.Parse(doc.DadosExtraidos); } catch { return 0; }
 
-        // Suporta tanto camelCase (normalizado) quanto snake_case (bruto da Extend)
-        var itensSolicitados = ExtrairListaItensMulti(fields, "itensSolicitados", "itens_solicitados", "procedimentos");
-        var itensRealizados  = ExtrairListaItensMulti(fields, "itensRealizados",  "itens_realizados");
-        var totalProcedimentos = ExtrairValorNumerico(fields, "totalProcedimentos", "total_procedimentos");
-        var totalGeral         = ExtrairValorNumerico(fields, "totalGeral", "total_geral");
-        var quantsSolicitadas = ExtrairQuantidadesMulti(fields, "quantidadesSolicitadas", "quantidades_solicitadas");
-        var quantsRealizadas  = ExtrairQuantidadesMulti(fields, "quantidadesRealizadas",  "quantidades_realizadas");
+        // Usa ExtracaoJsonHelper para obter itens tipados com código + descrição normalizada
+        var itensSolicitados = ExtracaoJsonHelper.ObterItens(fields, "itensSolicitados", "itensPedido");
+        var itensRealizados  = ExtracaoJsonHelper.ObterItens(fields, "itensRealizados");
+
+        // Totais monetários (campos com formato {amount: X, iso_4217_currency_code: "BRL"})
+        var totalGeral         = ExtracaoJsonHelper.ObterCampoMonetario(fields, "totalGeral");
+        var totalProcedimentos = ExtracaoJsonHelper.ObterCampoMonetario(fields, "totalProcedimentos");
 
         // A1: Item solicitado e não realizado
         foreach (var item in itensSolicitados)
         {
-            if (!itensRealizados.Any(r => NormalizarCodigo(r) == NormalizarCodigo(item)))
+            if (!itensRealizados.Any(r => r.Corresponde(item)))
             {
                 await _divService.CriarAsync(documentoId,
                     TipoDivergencia.ItemSolicitadoNaoRealizado, SeveridadeDivergencia.Alta,
                     $"Item solicitado '{item}' não encontrado nos itens realizados da guia.",
-                    campoAfetado: "itensRealizados", valorEncontrado: "(ausente)", valorEsperado: item);
+                    campoAfetado: "itensRealizados", valorEncontrado: "(ausente)", valorEsperado: item.ToString());
                 divergencias++;
             }
         }
@@ -245,39 +243,53 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         // A2: Item realizado e não solicitado
         foreach (var item in itensRealizados)
         {
-            if (!itensSolicitados.Any(s => NormalizarCodigo(s) == NormalizarCodigo(item)))
+            if (!itensSolicitados.Any(s => s.Corresponde(item)))
             {
                 await _divService.CriarAsync(documentoId,
                     TipoDivergencia.ItemRealizadoNaoSolicitado, SeveridadeDivergencia.Alta,
                     $"Item realizado '{item}' não consta nos itens solicitados da guia.",
-                    campoAfetado: "itensSolicitados", valorEncontrado: item, valorEsperado: "(ausente)");
+                    campoAfetado: "itensSolicitados", valorEncontrado: item.ToString(), valorEsperado: "(ausente)");
                 divergencias++;
             }
         }
 
-        // A3: Quantidade divergente
-        foreach (var kvp in quantsSolicitadas)
+        // A3: Quantidade divergente entre solicitado e realizado
+        foreach (var solicitado in itensSolicitados)
         {
-            if (quantsRealizadas.TryGetValue(kvp.Key, out var realizada) && Math.Abs(realizada - kvp.Value) > 0.001)
+            var realizado = itensRealizados.FirstOrDefault(r => r.Corresponde(solicitado));
+            if (realizado == null) continue;
+
+            var qtdSol = solicitado.QuantidadeSolicitada ?? solicitado.QuantidadeAutorizada;
+            var qtdReal = realizado.QuantidadeRealizada;
+
+            if (qtdSol.HasValue && qtdReal.HasValue && Math.Abs(qtdReal.Value - qtdSol.Value) > 0.001)
             {
                 await _divService.CriarAsync(documentoId,
                     TipoDivergencia.QuantidadeDivergente, SeveridadeDivergencia.Alta,
-                    $"Quantidade divergente para '{kvp.Key}': solicitado={kvp.Value}, realizado={realizada}.",
-                    campoAfetado: kvp.Key, valorEncontrado: realizada.ToString("F0"), valorEsperado: kvp.Value.ToString("F0"));
+                    $"Quantidade divergente para '{solicitado}': solicitado={qtdSol:F0}, realizado={qtdReal:F0}.",
+                    campoAfetado: solicitado.CodigoProcedimento ?? solicitado.DescricaoNormalizada ?? "item",
+                    valorEncontrado: qtdReal.Value.ToString("F0"),
+                    valorEsperado: qtdSol.Value.ToString("F0"));
                 divergencias++;
             }
         }
 
-        // A4: Soma dos itens diferente do total de procedimentos
-        if (totalProcedimentos.HasValue && quantsRealizadas.Count > 0)
+        // A4: Soma dos valores dos itens realizados diferente do total geral (verificação monetária)
+        // totalGeral é o campo monetário {amount: X} que representa o valor total da guia.
+        if (totalGeral.HasValue && itensRealizados.Count > 0)
         {
-            var soma = quantsRealizadas.Values.Sum();
-            if (Math.Abs(soma - totalProcedimentos.Value) > 0.01)
+            var somaItens = itensRealizados
+                .Where(i => i.ValorTotal.HasValue)
+                .Sum(i => i.ValorTotal!.Value);
+
+            if (somaItens > 0 && Math.Abs(somaItens - totalGeral.Value) > 0.05)
             {
                 await _divService.CriarAsync(documentoId,
                     TipoDivergencia.SomaDosItensDivergenteDoTotal, SeveridadeDivergencia.Alta,
-                    $"Soma dos itens realizados ({soma}) difere do total de procedimentos ({totalProcedimentos}).",
-                    campoAfetado: "totalProcedimentos", valorEncontrado: soma.ToString("F2"), valorEsperado: totalProcedimentos.Value.ToString("F2"));
+                    $"Soma dos valores dos itens realizados (R$ {somaItens:F2}) difere do total geral (R$ {totalGeral:F2}).",
+                    campoAfetado: "totalGeral",
+                    valorEncontrado: somaItens.ToString("F2"),
+                    valorEsperado: totalGeral.Value.ToString("F2"));
                 divergencias++;
             }
         }
@@ -287,8 +299,10 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         {
             await _divService.CriarAsync(documentoId,
                 TipoDivergencia.TotalProcedimentosIncompativelComTotalGeral, SeveridadeDivergencia.Critica,
-                $"Total de procedimentos ({totalProcedimentos}) incompatível com total geral ({totalGeral}).",
-                campoAfetado: "totalGeral", valorEncontrado: totalGeral.Value.ToString("F2"), valorEsperado: $">= {totalProcedimentos.Value:F2}");
+                $"Total de procedimentos (R$ {totalProcedimentos:F2}) incompatível com total geral (R$ {totalGeral:F2}).",
+                campoAfetado: "totalGeral",
+                valorEncontrado: totalGeral.Value.ToString("F2"),
+                valorEsperado: $">= {totalProcedimentos.Value:F2}");
             divergencias++;
         }
 
@@ -304,71 +318,86 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         if (atendimento == null) return 0;
 
         var todosDoc = await _repoDoc.GetAllAsync();
-        var docs = todosDoc.Where(d => d.AtendimentoAgrupadoId == atendimentoAgrupadoId).ToList();
-        var pedidos = docs.Where(d => d.TipoDocumento == TipoDocumento.PedidoMedico).ToList();
-        var guias = docs.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
+        var docs     = todosDoc.Where(d => d.AtendimentoAgrupadoId == atendimentoAgrupadoId).ToList();
+        var pedidos  = docs.Where(d => d.TipoDocumento == TipoDocumento.PedidoMedico).ToList();
+        var guias    = docs.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
         if (!pedidos.Any() || !guias.Any()) return 0;
 
         int divergencias = 0;
         var pedido = pedidos.First();
-        JObject? fieldsPedido = null;
-        try { if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos)) fieldsPedido = JObject.Parse(pedido.DadosExtraidos); } catch { }
 
-        var itensPedido = fieldsPedido != null ? ExtrairListaItensMulti(fieldsPedido, "itensSolicitados", "itens_solicitados", "procedimentos") : new List<string>();
-        var crmPedido      = ExtrairCampoMulti(fieldsPedido, "crm", "crm_medico");
-        var pacientePedido = ExtrairCampoMulti(fieldsPedido, "nomePaciente", "nome_paciente", "nome_beneficiario");
-        var dataPedido     = ExtrairCampoMulti(fieldsPedido, "dataSolicitacao", "data_solicitacao");
-        var itensGuias = new List<string>();
+        JObject? fieldsPedido = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos))
+                fieldsPedido = JObject.Parse(pedido.DadosExtraidos);
+        }
+        catch { }
+
+        // Itens do pedido: tenta itensSolicitados e itensPedido (Pedido Médico usa itensPedido)
+        var itensPedido    = ExtracaoJsonHelper.ObterItens(fieldsPedido, "itensSolicitados", "itensPedido");
+        var crmPedido      = ExtracaoJsonHelper.ObterCampoTexto(fieldsPedido, "crm", "crmMedico");
+        var pacientePedido = ExtracaoJsonHelper.ObterCampoTexto(fieldsPedido, "nomePaciente");
+        var dataPedido     = ExtracaoJsonHelper.ObterCampoTexto(fieldsPedido, "dataSolicitacao");
+
+        // Consolida todos os itens realizados de todas as guias
+        var itensGuias = new List<ItemExtraido>();
 
         foreach (var guia in guias)
         {
             JObject? fieldsGuia = null;
-            try { if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos)) fieldsGuia = JObject.Parse(guia.DadosExtraidos); } catch { }
-            if (fieldsGuia != null)
-                itensGuias.AddRange(ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados"));
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos))
+                    fieldsGuia = JObject.Parse(guia.DadosExtraidos);
+            }
+            catch { }
 
-            // B3: Item realizado sem autorização
-            var realizadosGuia = fieldsGuia != null ? ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados") : new List<string>();
+            var realizadosGuia = ExtracaoJsonHelper.ObterItens(fieldsGuia, "itensRealizados");
+            itensGuias.AddRange(realizadosGuia);
+
+            // B3: Item realizado sem autorização (não consta no pedido)
             foreach (var item in realizadosGuia)
             {
-                if (!itensPedido.Any(p => NormalizarCodigo(p) == NormalizarCodigo(item)))
+                if (!itensPedido.Any(p => p.Corresponde(item)))
                 {
                     await _divService.CriarAsync(guia.Id,
                         TipoDivergencia.ItemRealizadoSemAutorizacao, SeveridadeDivergencia.Critica,
                         $"Item '{item}' realizado/cobrado na guia sem constar no pedido médico.",
-                        atendimentoAgrupadoId: atendimentoAgrupadoId, campoAfetado: "itensRealizados", valorEncontrado: item);
+                        atendimentoAgrupadoId: atendimentoAgrupadoId,
+                        campoAfetado: "itensRealizados", valorEncontrado: item.ToString());
                     divergencias++;
                 }
             }
 
-            // B6: CRM divergente
-            var crmGuia = ExtrairCampoMulti(fieldsGuia, "crm", "crm_medico");
+            // B6: CRM divergente entre pedido e guia
+            var crmGuia = ExtracaoJsonHelper.ObterCampoTexto(fieldsGuia, "crm", "crmMedico");
             if (!string.IsNullOrWhiteSpace(crmPedido) && !string.IsNullOrWhiteSpace(crmGuia)
-                && NormalizarCodigo(crmPedido) != NormalizarCodigo(crmGuia))
+                && ExtracaoJsonHelper.NormalizarTexto(crmPedido) != ExtracaoJsonHelper.NormalizarTexto(crmGuia))
             {
                 await _divService.CriarAsync(guia.Id,
                     TipoDivergencia.CrmDivergente, SeveridadeDivergencia.Critica,
                     $"CRM divergente: pedido='{crmPedido}', guia='{crmGuia}'.",
-                    atendimentoAgrupadoId: atendimentoAgrupadoId, campoAfetado: "crm",
-                    valorEncontrado: crmGuia, valorEsperado: crmPedido);
+                    atendimentoAgrupadoId: atendimentoAgrupadoId,
+                    campoAfetado: "crm", valorEncontrado: crmGuia, valorEsperado: crmPedido);
                 divergencias++;
             }
 
-            // B7: Paciente divergente
-            var pacienteGuia = ExtrairCampoMulti(fieldsGuia, "nomePaciente", "nome_paciente", "nome_beneficiario");
+            // B7: Paciente divergente entre pedido e guia
+            var pacienteGuia = ExtracaoJsonHelper.ObterCampoTexto(fieldsGuia, "nomePaciente");
             if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
-                && !NomesSimiliares(pacientePedido, pacienteGuia))
+                && !ExtracaoJsonHelper.NomesSimilares(pacientePedido, pacienteGuia))
             {
                 await _divService.CriarAsync(guia.Id,
                     TipoDivergencia.PacienteDivergente, SeveridadeDivergencia.Critica,
                     $"Paciente divergente: pedido='{pacientePedido}', guia='{pacienteGuia}'.",
-                    atendimentoAgrupadoId: atendimentoAgrupadoId, campoAfetado: "nomePaciente",
-                    valorEncontrado: pacienteGuia, valorEsperado: pacientePedido);
+                    atendimentoAgrupadoId: atendimentoAgrupadoId,
+                    campoAfetado: "nomePaciente", valorEncontrado: pacienteGuia, valorEsperado: pacientePedido);
                 divergencias++;
             }
 
             // B8: Data suspeita (guia anterior ao pedido)
-            var dataGuia = ExtrairCampoMulti(fieldsGuia, "dataAtendimento", "data_atendimento", "data_realizacao");
+            var dataGuia = ExtracaoJsonHelper.ObterCampoTexto(fieldsGuia, "dataAtendimento", "dataRealizacao");
             if (!string.IsNullOrWhiteSpace(dataPedido) && !string.IsNullOrWhiteSpace(dataGuia)
                 && DateTime.TryParse(dataPedido, out var dtPedido)
                 && DateTime.TryParse(dataGuia, out var dtGuia)
@@ -377,8 +406,10 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 await _divService.CriarAsync(guia.Id,
                     TipoDivergencia.DataSuspeitaPedidoGuia, SeveridadeDivergencia.Alta,
                     $"Data da guia ({dtGuia:dd/MM/yyyy}) é anterior à data do pedido ({dtPedido:dd/MM/yyyy}).",
-                    atendimentoAgrupadoId: atendimentoAgrupadoId, campoAfetado: "dataAtendimento",
-                    valorEncontrado: dtGuia.ToString("dd/MM/yyyy"), valorEsperado: $">= {dtPedido:dd/MM/yyyy}");
+                    atendimentoAgrupadoId: atendimentoAgrupadoId,
+                    campoAfetado: "dataAtendimento",
+                    valorEncontrado: dtGuia.ToString("dd/MM/yyyy"),
+                    valorEsperado: $">= {dtPedido:dd/MM/yyyy}");
                 divergencias++;
             }
         }
@@ -386,13 +417,14 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         // B1: Item do pedido não encontrado em nenhuma guia
         foreach (var item in itensPedido)
         {
-            if (!itensGuias.Any(g => NormalizarCodigo(g) == NormalizarCodigo(item)))
+            if (!itensGuias.Any(g => g.Corresponde(item)))
             {
                 await _divService.CriarAsync(pedido.Id,
                     TipoDivergencia.ItemPedidoNaoEncontradoEmGuia, SeveridadeDivergencia.Alta,
                     $"Item do pedido '{item}' não encontrado em nenhuma guia do agrupamento.",
-                    atendimentoAgrupadoId: atendimentoAgrupadoId, campoAfetado: "itensSolicitados",
-                    valorEncontrado: "(ausente)", valorEsperado: item);
+                    atendimentoAgrupadoId: atendimentoAgrupadoId,
+                    campoAfetado: "itensSolicitados",
+                    valorEncontrado: "(ausente)", valorEsperado: item.ToString());
                 divergencias++;
             }
         }
@@ -405,7 +437,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     // ─────────────────────────────────────────────────────────────────────────
     public async Task<int> DetectarDuplicidadesAsync(int loteId)
     {
-        var todos = await _repoDoc.GetAllAsync();
+        var todos    = await _repoDoc.GetAllAsync();
         var docsLote = todos.Where(d => d.LoteId == loteId).ToList();
         int divergencias = 0;
 
@@ -430,12 +462,12 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             var lote = await _repoLote.GetByIdAsync(loteId);
             if (lote != null)
             {
-                var janela = lote.DataCriacao.AddDays(-_options.JanelaDuplicidadeDias);
+                var janela    = lote.DataCriacao.AddDays(-_options.JanelaDuplicidadeDias);
                 var outrosLotes = todos.Where(d => d.LoteId != loteId && d.DataCriacao >= janela).ToList();
                 foreach (var doc in docsLote)
                 {
                     var chave = NormalizarNomeArquivo(doc.NomeArquivo);
-                    var dup = outrosLotes.FirstOrDefault(d =>
+                    var dup   = outrosLotes.FirstOrDefault(d =>
                         d.TipoDocumento == doc.TipoDocumento && NormalizarNomeArquivo(d.NomeArquivo) == chave);
                     if (dup != null)
                     {
@@ -460,19 +492,19 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     ///
     /// Regra de negócio:
     /// - Um pedido médico NÃO é considerado "sem guia" se QUALQUER guia do mesmo
-    ///   atendimento agrupado cobrir ao menos um dos procedimentos do pedido.
+    ///   lote cobrir ao menos um dos procedimentos do pedido (mesmo paciente).
     /// - Um pedido só gera divergência PedidoSemGuia se não houver NENHUMA guia
-    ///   no atendimento E não houver guias com procedimentos em comum.
+    ///   no lote com procedimentos em comum com o pedido do mesmo paciente.
     /// - Isso suporta o cenário real: 1 pedido → N guias (cada guia cobre parte
     ///   dos procedimentos do pedido).
     /// </summary>
     public async Task<int> DetectarAusenciaDocumentalAsync(int loteId)
     {
-        var todos = await _repoDoc.GetAllAsync();
-        var docsLote = todos.Where(d => d.LoteId == loteId).ToList();
-        var atendimentos = await _repoAtendimento.GetAllAsync();
+        var todos            = await _repoDoc.GetAllAsync();
+        var docsLote         = todos.Where(d => d.LoteId == loteId).ToList();
+        var atendimentos     = await _repoAtendimento.GetAllAsync();
         var atendimentosLote = atendimentos.Where(a => a.LoteId == loteId).ToList();
-        int divergencias = 0;
+        int divergencias     = 0;
 
         foreach (var atendimento in atendimentosLote)
         {
@@ -492,67 +524,70 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             }
 
             // F2: Pedido sem nenhuma guia no atendimento
-            // Mas SOMENTE se não houver guias com procedimentos em comum com o pedido.
-            // Isso evita falso positivo quando o pedido tem guias mas o agrupamento
-            // não capturou o vínculo explícito (ex: pedido e guias agrupados pelo mesmo paciente).
+            // Mas SOMENTE se não houver guias com procedimentos em comum com o pedido
+            // em QUALQUER atendimento do mesmo lote (mesmo paciente).
             if (pedidos.Any() && !guias.Any())
             {
                 foreach (var pedido in pedidos)
                 {
                     JObject? fieldsPedido = null;
-                    try { if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos)) fieldsPedido = JObject.Parse(pedido.DadosExtraidos); } catch { }
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(pedido.DadosExtraidos))
+                            fieldsPedido = JObject.Parse(pedido.DadosExtraidos);
+                    }
+                    catch { }
 
-                    var itensPedido = fieldsPedido != null
-                        ? ExtrairListaItensMulti(fieldsPedido, "itensSolicitados", "itens_solicitados", "procedimentos", "itens_pedido")
-                        : new List<string>();
+                    var itensPedido    = ExtracaoJsonHelper.ObterItens(fieldsPedido, "itensSolicitados", "itensPedido");
+                    var pacientePedido = ExtracaoJsonHelper.ObterCampoTexto(fieldsPedido, "nomePaciente");
 
-                    var pacientePedido = ExtrairCampoMulti(fieldsPedido, "nomePaciente", "nome_paciente", "nome_beneficiario");
-
-                    // Busca guias de QUALQUER atendimento do mesmo lote que tenham o mesmo paciente
-                    // e ao menos um procedimento em comum com o pedido.
-                    var guiasLote = docsLote.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
-
-                    bool pedidoCobertoPorGuia = false;
+                    // Busca guias de QUALQUER atendimento do mesmo lote
+                    var guiasLote         = docsLote.Where(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT).ToList();
+                    bool pedidoCoberto    = false;
 
                     foreach (var guia in guiasLote)
                     {
                         JObject? fieldsGuia = null;
-                        try { if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos)) fieldsGuia = JObject.Parse(guia.DadosExtraidos); } catch { }
+                        try
+                        {
+                            if (!string.IsNullOrWhiteSpace(guia.DadosExtraidos))
+                                fieldsGuia = JObject.Parse(guia.DadosExtraidos);
+                        }
+                        catch { }
                         if (fieldsGuia == null) continue;
 
-                        // Verifica se o paciente é o mesmo (se ambos tiverem nome)
-                        var pacienteGuia = ExtrairCampoMulti(fieldsGuia, "nomePaciente", "nome_paciente", "nome_beneficiario");
+                        // Verifica se o paciente é o mesmo
+                        var pacienteGuia = ExtracaoJsonHelper.ObterCampoTexto(fieldsGuia, "nomePaciente");
                         if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
-                            && !NomesSimiliares(pacientePedido, pacienteGuia))
+                            && !ExtracaoJsonHelper.NomesSimilares(pacientePedido, pacienteGuia))
                             continue; // Paciente diferente — esta guia não é do mesmo paciente
 
                         // Verifica se há ao menos um procedimento em comum
-                        var itensGuia = ExtrairListaItensMulti(fieldsGuia, "itensRealizados", "itens_realizados",
-                                                               "itensSolicitados", "itens_solicitados");
+                        var itensGuia = ExtracaoJsonHelper.ObterItens(fieldsGuia, "itensRealizados", "itensSolicitados");
 
-                        if (itensPedido.Any())
+                        if (itensPedido.Count > 0)
                         {
                             // Há procedimentos no pedido: verifica intersecção
-                            if (itensGuia.Any(g => itensPedido.Any(p => NormalizarCodigo(p) == NormalizarCodigo(g))))
+                            if (itensGuia.Any(g => itensPedido.Any(p => p.Corresponde(g))))
                             {
-                                pedidoCobertoPorGuia = true;
+                                pedidoCoberto = true;
                                 break;
                             }
                         }
                         else
                         {
                             // Pedido sem itens extraídos (OCR falhou): considera coberto se
-                            // há guia do mesmo paciente no lote (não gera falso positivo).
+                            // há guia do mesmo paciente no lote (evita falso positivo).
                             if (!string.IsNullOrWhiteSpace(pacientePedido) && !string.IsNullOrWhiteSpace(pacienteGuia)
-                                && NomesSimiliares(pacientePedido, pacienteGuia))
+                                && ExtracaoJsonHelper.NomesSimilares(pacientePedido, pacienteGuia))
                             {
-                                pedidoCobertoPorGuia = true;
+                                pedidoCoberto = true;
                                 break;
                             }
                         }
                     }
 
-                    if (!pedidoCobertoPorGuia)
+                    if (!pedidoCoberto)
                     {
                         await _divService.CriarAsync(pedido.Id,
                             TipoDivergencia.PedidoSemGuia, SeveridadeDivergencia.Alta,
@@ -570,8 +605,9 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             }
 
             // F3: Ambos presentes → executa regras B (cruzamento pedido x guias)
+            // CORREÇÃO: o retorno de AuditarPedidoVsGuiasAsync era ignorado anteriormente.
             if (pedidos.Any() && guias.Any())
-                await AuditarPedidoVsGuiasAsync(atendimento.Id);
+                divergencias += await AuditarPedidoVsGuiasAsync(atendimento.Id);
         }
 
         return divergencias;
@@ -582,14 +618,14 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     // ─────────────────────────────────────────────────────────────────────────
     public async Task CalcularScoreRiscoAsync(int loteId)
     {
-        var atendimentos = await _repoAtendimento.GetAllAsync();
+        var atendimentos     = await _repoAtendimento.GetAllAsync();
         var atendimentosLote = atendimentos.Where(a => a.LoteId == loteId).ToList();
-        var todosDoc = await _repoDoc.GetAllAsync();
+        var todosDoc         = await _repoDoc.GetAllAsync();
 
         foreach (var atendimento in atendimentosLote)
         {
             var docsAtend = todosDoc.Where(d => d.AtendimentoAgrupadoId == atendimento.Id).ToList();
-            double score = 0;
+            double score  = 0;
 
             score += atendimento.QuantidadeDivergencias * 5;
 
@@ -597,182 +633,26 @@ public class AuditoriaRegraService : IAuditoriaRegraService
             if (confiancaMedia < 0.80) score += 20;
             else if (confiancaMedia < 0.90) score += 10;
 
-            if (docsAtend.Any(d => d.OrigemSuspeita)) score += 25;
-            if (docsAtend.Any(d => d.RevisaoHumanaNecessaria)) score += 15;
+            if (docsAtend.Any(d => d.OrigemSuspeita))           score += 25;
+            if (docsAtend.Any(d => d.RevisaoHumanaNecessaria))  score += 15;
 
             var temPedido = docsAtend.Any(d => d.TipoDocumento == TipoDocumento.PedidoMedico);
-            var temGuia = docsAtend.Any(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT);
+            var temGuia   = docsAtend.Any(d => d.TipoDocumento == TipoDocumento.GuiaSPSADT);
             if (!temPedido || !temGuia) score += 30;
 
-            atendimento.ScoreRisco = Math.Min(score, 100);
+            atendimento.ScoreRisco             = Math.Min(score, 100);
             atendimento.RevisaoHumanaNecessaria = score >= 50;
-            atendimento.DataAtualizacao = DateTime.UtcNow;
+            atendimento.DataAtualizacao         = DateTime.UtcNow;
             await _repoAtendimento.UpdateAsync(atendimento);
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Helpers
+    // Helpers privados
     // ─────────────────────────────────────────────────────────────────────────
-    private static List<string> ExtrairListaItens(JObject fields, string nomeCampo)
-    {
-        var token = fields[nomeCampo]?["value"];
-        if (token == null) return new List<string>();
-        if (token.Type == JTokenType.Array)
-            return token.Select(t => t.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-        var str = token.ToString();
-        return string.IsNullOrWhiteSpace(str) ? new List<string>() : new List<string> { str };
-    }
-
-    private static Dictionary<string, double> ExtrairQuantidades(JObject fields, string nomeCampo)
-    {
-        var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        var token = fields[nomeCampo]?["value"];
-        if (token is JObject obj)
-            foreach (var prop in obj.Properties())
-                if (double.TryParse(prop.Value.ToString(), out var val))
-                    result[prop.Name] = val;
-        return result;
-    }
-
-    /// <summary>
-    /// Extrai lista de itens tentando multiplos nomes de campo (camelCase e snake_case).
-    /// Retorna a primeira lista nao-vazia encontrada.
-    /// </summary>
-    private static List<string> ExtrairListaItensMulti(JObject fields, params string[] nomesCampo)
-    {
-        foreach (var nome in nomesCampo)
-        {
-            var lista = ExtrairListaItens(fields, nome);
-            if (lista.Count > 0) return lista;
-        }
-        return new List<string>();
-    }
-
-    /// <summary>
-    /// Extrai dicionario de quantidades tentando multiplos nomes de campo.
-    /// </summary>
-    private static Dictionary<string, double> ExtrairQuantidadesMulti(JObject fields, params string[] nomesCampo)
-    {
-        foreach (var nome in nomesCampo)
-        {
-            var dict = ExtrairQuantidades(fields, nome);
-            if (dict.Count > 0) return dict;
-        }
-        return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Extrai valor numerico tentando multiplos nomes de campo.
-    /// </summary>
-    private static double? ExtrairValorNumerico(JObject fields, params string[] nomesCampo)
-    {
-        foreach (var nome in nomesCampo)
-        {
-            var token = fields[nome];
-            if (token == null || token.Type == JTokenType.Null)
-                continue;
-
-            // número direto
-            if (token.Type == JTokenType.Float || token.Type == JTokenType.Integer)
-                return token.Value<double>();
-
-            // string numérica
-            if (token.Type == JTokenType.String &&
-                double.TryParse(token.ToString(), System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var valorTexto))
-                return valorTexto;
-
-            if (token.Type == JTokenType.Object)
-            {
-                var obj = (JObject)token;
-
-                // Formato normalizado do WebhookProcessorService: { "value": X, "confidence": Y }
-                // O campo "value" pode ser escalar ou objeto { "amount": N, "iso_4217_currency_code": "BRL" }
-                var valueToken = obj["value"];
-                if (valueToken != null && valueToken.Type != JTokenType.Null)
-                {
-                    // value é escalar numérico
-                    if (valueToken.Type == JTokenType.Float || valueToken.Type == JTokenType.Integer)
-                        return valueToken.Value<double>();
-
-                    // value é string numérica
-                    if (valueToken.Type == JTokenType.String &&
-                        double.TryParse(valueToken.ToString(), System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture, out var vt))
-                        return vt;
-
-                    // value é objeto { "amount": N } (formato monetário da Extend)
-                    if (valueToken.Type == JTokenType.Object)
-                    {
-                        var innerObj = (JObject)valueToken;
-                        var amountInner = innerObj["amount"];
-                        if (amountInner != null && (amountInner.Type == JTokenType.Float || amountInner.Type == JTokenType.Integer))
-                            return amountInner.Value<double>();
-                        if (amountInner?.Type == JTokenType.String &&
-                            double.TryParse(amountInner.ToString(), System.Globalization.NumberStyles.Any,
-                                System.Globalization.CultureInfo.InvariantCulture, out var amt))
-                            return amt;
-                    }
-                }
-
-                // Objeto direto com "amount" (sem wrapper value) — formato bruto da Extend
-                var directAmount = obj["amount"];
-                if (directAmount != null && (directAmount.Type == JTokenType.Float || directAmount.Type == JTokenType.Integer))
-                    return directAmount.Value<double>();
-                if (directAmount?.Type == JTokenType.String &&
-                    double.TryParse(directAmount.ToString(), System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out var da))
-                    return da;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extrai valor de texto de um campo, tentando multiplos nomes (camelCase e snake_case).
-    /// Suporta tanto o formato normalizado { "value": "..." } quanto valor direto.
-    /// </summary>
-    private static string? ExtrairCampoMulti(JObject? fields, params string[] nomesCampo)
-    {
-        if (fields == null) return null;
-        foreach (var nome in nomesCampo)
-        {
-            var token = fields[nome];
-            if (token == null) continue;
-            if (token is JObject obj)
-            {
-                var val = obj["value"];
-                if (val != null && val.Type != JTokenType.Null
-                    && val.Type != JTokenType.Array && val.Type != JTokenType.Object)
-                {
-                    var str = val.ToString();
-                    if (!string.IsNullOrWhiteSpace(str)) return str;
-                }
-            }
-            else if (token.Type != JTokenType.Null
-                     && token.Type != JTokenType.Array && token.Type != JTokenType.Object)
-            {
-                var str = token.ToString();
-                if (!string.IsNullOrWhiteSpace(str)) return str;
-            }
-        }
-        return null;
-    }
-
-    private static string NormalizarCodigo(string s) =>
-        new string(s.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
 
     private static string NormalizarNomeArquivo(string s) =>
         System.IO.Path.GetFileNameWithoutExtension(s).ToLowerInvariant().Trim();
-
-    private static bool NomesSimiliares(string a, string b)
-    {
-        var na = a.ToUpperInvariant().Trim();
-        var nb = b.ToUpperInvariant().Trim();
-        return na == nb || na.Contains(nb) || nb.Contains(na);
-    }
 }
 
 /// <summary>Opções de configuração para as regras de auditoria.</summary>

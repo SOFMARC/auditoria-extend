@@ -233,9 +233,27 @@ public class WebhookProcessorService : IWebhookProcessorService
         if (!string.IsNullOrWhiteSpace(dataAtendStr) && DateTime.TryParse(dataAtendStr, out var dtParsed))
             dataAtendimento = dtParsed;
 
-        var chaveAgrupamento = string.IsNullOrWhiteSpace(numeroCarteira)
-            ? $"DOC_{documento.Id}"
-            : numeroCarteira.Trim();
+        // Chave composta para pedidos médicos (sem carteira/CPF):
+        // usa nomePaciente + nomeMedico + dataSolicitacao para reduzir agrupamentos incorretos
+        string chaveAgrupamento;
+        if (!string.IsNullOrWhiteSpace(numeroCarteira) && numeroCarteira != nomePaciente)
+        {
+            // Guia SPSADT: usa número de carteira como chave primária
+            chaveAgrupamento = numeroCarteira.Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(nomePaciente))
+        {
+            // Pedido Médico: chave composta por paciente + médico + data
+            var dataSolicitacao = ExtrairValorCampo(dadosNormalizados, "dataSolicitacao");
+            var partes = new[] { nomePaciente, nomeMedico, dataSolicitacao }
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.Trim().ToUpperInvariant());
+            chaveAgrupamento = string.Join("|", partes);
+        }
+        else
+        {
+            chaveAgrupamento = $"DOC_{documento.Id}";
+        }
 
         _logger.LogInformation(
             "Webhook Extend: AgrupandoDoc={DocId} LoteId={LoteId} Chave=\"{Chave}\"",
@@ -301,6 +319,12 @@ public class WebhookProcessorService : IWebhookProcessorService
         var resultado = new JObject();
         if (valueObj == null) return resultado;
 
+        // Rastreia quais nomes normalizados já foram adicionados para evitar duplicatas.
+        // Problema anterior: o campo original (snake_case) e o normalizado (camelCase)
+        // eram ambos inseridos no mesmo JObject, fazendo o AuditoriaRegraService auditar
+        // o mesmo campo duas vezes.
+        var nomesJaAdicionados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var prop in valueObj.Properties())
         {
             var nomeCampoOriginal = prop.Name;
@@ -308,8 +332,14 @@ public class WebhookProcessorService : IWebhookProcessorService
                 ? mapped
                 : SnakeToCamel(nomeCampoOriginal);
 
+            // Persiste APENAS o nome normalizado (camelCase) como representação oficial.
+            // O nome original snake_case é descartado do objeto final.
+            if (!nomesJaAdicionados.Add(nomeCampoNorm))
+                continue; // campo já adicionado por alias anterior (ex: nome_beneficiario -> nomePaciente)
+
             var campoNorm = new JObject { ["value"] = prop.Value };
 
+            // Busca metadata pelo nome original (snake_case) ou normalizado (camelCase)
             JObject? meta = null;
             if (metaObj != null)
             {
@@ -319,17 +349,23 @@ public class WebhookProcessorService : IWebhookProcessorService
 
             if (meta != null)
             {
-                campoNorm["confidence"]       = meta["confidence"];
-                campoNorm["reviewAgentScore"] = meta["reviewAgentScore"];
-                campoNorm["citation"]         = meta["citation"];
-                campoNorm["pageNumber"]       = meta["pageNumber"];
-                campoNorm["isPrintedPage"]    = meta["isPrintedPage"];
+                // Formato atual da Extend: ocrConfidence, logprobsConfidence, citations (array)
+                // Formato legado: confidence, reviewAgentScore, citation (string), pageNumber
+                // Preservamos ambos para compatibilidade, mas priorizamos os novos.
+                campoNorm["ocrConfidence"]      = meta["ocrConfidence"] ?? meta["confidence"];
+                campoNorm["logprobsConfidence"] = meta["logprobsConfidence"];
+                campoNorm["reviewAgentScore"]   = meta["reviewAgentScore"];
+                campoNorm["pageNumber"]         = meta["pageNumber"];
+
+                // citations pode ser array (novo) ou string (legado)
+                var citToken = meta["citations"] ?? meta["citation"];
+                if (citToken is JArray)
+                    campoNorm["citations"] = citToken;
+                else if (citToken != null && citToken.Type != JTokenType.Null)
+                    campoNorm["citations"] = new JArray(citToken.ToString());
             }
 
             resultado[nomeCampoNorm] = campoNorm;
-
-            if (!string.Equals(nomeCampoOriginal, nomeCampoNorm, StringComparison.Ordinal))
-                resultado[nomeCampoOriginal] = campoNorm;
         }
 
         return resultado;
@@ -362,8 +398,15 @@ public class WebhookProcessorService : IWebhookProcessorService
 
     private static double CalcularConfiancaMedia(JObject metaObj)
     {
+        // Prioriza ocrConfidence (formato atual), fallback para confidence (legado)
         var confidencias = metaObj.Properties()
-            .Select(p => p.Value is JObject obj ? obj["confidence"]?.Value<double?>() : null)
+            .Select(p =>
+            {
+                if (p.Value is not JObject obj) return (double?)null;
+                return obj["ocrConfidence"]?.Value<double?>()
+                    ?? obj["logprobsConfidence"]?.Value<double?>()
+                    ?? obj["confidence"]?.Value<double?>();
+            })
             .Where(c => c.HasValue)
             .Select(c => c!.Value)
             .ToList();
