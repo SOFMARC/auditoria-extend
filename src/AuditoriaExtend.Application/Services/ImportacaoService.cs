@@ -195,7 +195,7 @@ public class ImportacaoService : IImportacaoService
             return TipoDocumento.Laudo;
         if (nome.Contains("receita"))
             return TipoDocumento.Receita;
-        return TipoDocumento.Desconhecido;
+        return TipoDocumento.GuiaSPSADT;
     }
 
     private string SelecionarExtractor(TipoDocumento tipo) => tipo switch

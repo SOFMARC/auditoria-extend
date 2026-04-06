@@ -31,7 +31,7 @@ public class FraudeAnaliseWorker : BackgroundService
         _logger.LogInformation("FraudeAnaliseWorker iniciado. Verificando a cada {Intervalo} minutos.", Intervalo.TotalMinutes);
 
         // Aguarda 30 segundos na inicialização para o app estar completamente pronto
-        //await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
