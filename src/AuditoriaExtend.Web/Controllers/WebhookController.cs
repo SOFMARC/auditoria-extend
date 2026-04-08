@@ -53,10 +53,9 @@ public class WebhookController : ControllerBase
 
         var preview = payloadJson.Length > 1000 ? payloadJson[..1000] : payloadJson;
 
-        _logger.LogInformation("Webhook Extend: ContentType={ContentType} Length={Length}",
-            Request.ContentType, Request.ContentLength);
-
-        _logger.LogInformation("Webhook Extend RAW: " + preview);
+        _logger.LogInformation("Webhook Extend: ContentType={ContentType} Length={Length}", Request.ContentType, Request.ContentLength);
+        _logger.LogInformation("Webhook Extend PREVIEW: {Preview}", preview);
+        _logger.LogInformation("Webhook Extend FULL PAYLOAD: {PayloadJson}", payloadJson);
 
         try
         {

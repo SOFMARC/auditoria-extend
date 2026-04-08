@@ -5,6 +5,7 @@ using AuditoriaExtend.Domain.Enums;
 using AuditoriaExtend.Domain.Repositories;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace AuditoriaExtend.Application.Services;
@@ -29,10 +30,10 @@ public class AuditoriaRegraService : IAuditoriaRegraService
     private readonly ILogger<AuditoriaRegraService> _logger;
 
     // Limiares de confiança (Regra C)
-    private const double LimiarOcrCriticoObrigatorio = 0.80;
-    private const double LimiarOcrImportanteAlerta   = 0.90;
-    private const double LimiarReviewScoreBaixo      = 3.0;
-    private const double LimiarReviewScoreAlerta      = 4.0;
+    private const double LimiarOcrCriticoObrigatorio = 0.30;
+    private const double LimiarOcrImportanteAlerta   = 0.30;
+    private const double LimiarReviewScoreBaixo      = 0.30;
+    private const double LimiarReviewScoreAlerta      = 0.30;
 
     // Campos críticos — apenas camelCase (o JSON normalizado não contém snake_case).
     // Esses campos exigem revisão humana obrigatória quando a confiança é baixa.
@@ -111,7 +112,7 @@ public class AuditoriaRegraService : IAuditoriaRegraService
                 // Usa reviewAgentScore (double) quando disponível; fallback para ocrConfidence
                 var reviewScore = meta.ReviewAgentScore;
                 var ocrConf     = meta.OcrConfidence;
-                var value       = meta.Value;
+                var value = ExtrairValorAuditoria(meta.Value);
 
                 // C1: reviewAgentScore <= 3 em campo crítico → revisão obrigatória
                 if (ehCritico && reviewScore.HasValue && reviewScore.Value <= LimiarReviewScoreBaixo)
@@ -319,6 +320,124 @@ public class AuditoriaRegraService : IAuditoriaRegraService
         }
 
         return divergencias;
+    }
+
+    private static string? ExtrairValorAuditoria(object? valor)
+    {
+        if (valor == null)
+            return null;
+
+        // já é string
+        if (valor is string s)
+            return ExtrairValorAuditoriaDeTexto(s);
+
+        // outros escalares
+        if (valor is int or long or decimal or double or float or bool or DateTime)
+            return valor.ToString();
+
+        // tenta serializar e tratar como JSON
+        try
+        {
+            var json = JsonConvert.SerializeObject(valor);
+            return ExtrairValorAuditoriaDeTexto(json);
+        }
+        catch
+        {
+            return valor.ToString();
+        }
+    }
+
+    private static string? ExtrairValorAuditoriaDeTexto(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return valor;
+
+        var texto = valor.Trim();
+
+        // se não parece JSON, devolve direto
+        if (!texto.StartsWith("{") && !texto.StartsWith("["))
+            return texto;
+
+        try
+        {
+            var token = JToken.Parse(texto);
+            return ExtrairValorUtil(token);
+        }
+        catch
+        {
+            return texto;
+        }
+    }
+
+    private static string? ExtrairValorUtil(JToken token)
+    {
+        if (token == null || token.Type == JTokenType.Null)
+            return null;
+
+        if (token.Type == JTokenType.String ||
+            token.Type == JTokenType.Integer ||
+            token.Type == JTokenType.Float ||
+            token.Type == JTokenType.Boolean)
+        {
+            return token.ToString();
+        }
+
+        if (token is JObject obj)
+        {
+            // moeda
+            if (obj["amount"] != null && obj["amount"]?.Type != JTokenType.Null)
+                return obj["amount"]?.ToString();
+
+            // item de procedimento/exame
+            if (!string.IsNullOrWhiteSpace(obj["descricao_original"]?.ToString()))
+                return obj["descricao_original"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["descricao_normalizada"]?.ToString()))
+                return obj["descricao_normalizada"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["codigo_procedimento"]?.ToString()))
+                return obj["codigo_procedimento"]?.ToString();
+
+            // assinatura
+            if (obj["is_signed"] != null && obj["is_signed"]?.Type != JTokenType.Null)
+                return obj["is_signed"]?.ToString();
+
+            // nomes úteis
+            if (!string.IsNullOrWhiteSpace(obj["printed_name"]?.ToString()))
+                return obj["printed_name"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["nome"]?.ToString()))
+                return obj["nome"]?.ToString();
+
+            return "[JSON_COMPLEXO]";
+        }
+
+        if (token is JArray arr)
+        {
+            if (arr.Count == 0)
+                return null;
+
+            var valores = arr
+                .Select(ExtrairValorUtil)
+                .Where(v => !string.IsNullOrWhiteSpace(v) && v != "[JSON_COMPLEXO]")
+                .ToList();
+
+            if (valores.Count == 0)
+                return "[JSON_COMPLEXO]";
+
+            return string.Join(" | ", valores);
+        }
+
+        return "[JSON_COMPLEXO]";
+    }
+
+    private static string? NormalizarTextoBanco(string? valor, int max = 500)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return valor;
+
+        var texto = valor.Trim();
+        return texto.Length > max ? texto.Substring(0, max) : texto;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

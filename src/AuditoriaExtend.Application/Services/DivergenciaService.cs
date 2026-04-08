@@ -194,10 +194,88 @@ public class DivergenciaService : IDivergenciaService
 
         var texto = valor.Trim();
 
-        if (texto.StartsWith("[") || texto.StartsWith("{"))
-            return "[JSON_COMPLEXO]";
+        if (texto.StartsWith("{") || texto.StartsWith("["))
+        {
+            try
+            {
+                var token = JToken.Parse(texto);
+                var resultado = ExtrairValorUtil(token);
+
+                if (string.IsNullOrWhiteSpace(resultado))
+                    return "[JSON_COMPLEXO]";
+
+                resultado = resultado.Trim();
+                return resultado.Length > max ? resultado.Substring(0, max) : resultado;
+            }
+            catch
+            {
+                return "[JSON_INVALIDO]";
+            }
+        }
 
         return texto.Length > max ? texto.Substring(0, max) : texto;
+    }
+
+    private static string? ExtrairValorUtil(JToken token)
+    {
+        if (token == null || token.Type == JTokenType.Null)
+            return null;
+
+        if (token.Type == JTokenType.String ||
+            token.Type == JTokenType.Integer ||
+            token.Type == JTokenType.Float ||
+            token.Type == JTokenType.Boolean)
+        {
+            return token.ToString();
+        }
+
+        if (token is JObject obj)
+        {
+            // 1. moeda
+            if (obj["amount"] != null)
+                return obj["amount"]?.ToString();
+
+            // 2. item de procedimento/exame
+            if (!string.IsNullOrWhiteSpace(obj["descricao_original"]?.ToString()))
+                return obj["descricao_original"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["descricao_normalizada"]?.ToString()))
+                return obj["descricao_normalizada"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["codigo_procedimento"]?.ToString()))
+                return obj["codigo_procedimento"]?.ToString();
+
+            // 3. assinatura
+            if (obj["is_signed"] != null)
+                return obj["is_signed"]?.ToString();
+
+            // 4. nomes úteis
+            if (!string.IsNullOrWhiteSpace(obj["nome"]?.ToString()))
+                return obj["nome"]?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(obj["printed_name"]?.ToString()))
+                return obj["printed_name"]?.ToString();
+
+            return null;
+        }
+
+        if (token is JArray arr)
+        {
+            if (arr.Count == 0)
+                return null;
+
+            var valores = arr
+                .Select(ExtrairValorUtil)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .ToList();
+
+            if (valores.Count == 0)
+                return null;
+
+            return string.Join(" | ", valores);
+        }
+
+        return null;
     }
 
     public async Task<DivergenciaAuditoriaDto?> ObterPorIdAsync(int id)
